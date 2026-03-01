@@ -42,6 +42,20 @@ const EasingFunctions: { [key: string]: (t: number) => number } = {
     Unset: (t) => t
 };
 
+// Helper function to check if an event is enabled
+// enable: undefined | true | "" | "Enabled" -> enabled
+// enable: false | "Disabled" -> disabled
+const isEventEnabled = (event: any): boolean => {
+    if (event.enable === undefined) return true;
+    if (event.enable === true) return true;
+    if (event.enable === "") return true;
+    if (event.enable === "Enabled") return true;
+    if (event.enable === false) return false;
+    if (event.enable === "Disabled") return false;
+    // Default to enabled for unknown values
+    return true;
+};
+
 class HTMLAudioMusic implements IMusic {
   private audio: HTMLAudioElement;
   private _isPlaying: boolean = false;
@@ -401,6 +415,9 @@ export class Player implements IPlayer {
         if (this.tileEvents.has(i)) {
             const events = this.tileEvents.get(i)!;
             events.forEach(event => {
+                // Skip disabled events
+                if (!isEventEnabled(event)) return;
+                
                 if (event.eventType === 'Twirl') {
                     isCW = !isCW;
                 } else if (event.eventType === 'SetSpeed') {
@@ -511,6 +528,9 @@ export class Player implements IPlayer {
         if (this.tileEvents.has(lastIndex)) {
             const events = this.tileEvents.get(lastIndex)!;
             events.forEach(event => {
+                // Skip disabled events
+                if (!isEventEnabled(event)) return;
+                
                 if (event.eventType === 'Twirl') {
                     isCW = !isCW;
                 } else if (event.eventType === 'SetSpeed') {
@@ -972,7 +992,11 @@ export class Player implements IPlayer {
     const countdownTicks = settings.countdownTicks || 4;
     const countdownDuration = countdownTicks * initialSecPerBeat;
 
-    if (this.music.isPlaying) {
+    // Use music sync only when music is actively playing (not ended, not paused)
+    // music.isPlaying returns true only when audio is actually playing (not ended)
+    const musicEnded = this.music.hasAudio && !this.music.isPlaying && !this.music.isPaused && this.elapsedTime > countdownDuration * 1000;
+    
+    if (this.music.isPlaying && this.music.hasAudio) {
         const musicTime = this.music.position * 1000;
         
         // Sync logic: Only sync if music has actually started (position > 0)
@@ -997,6 +1021,11 @@ export class Player implements IPlayer {
             this.startTime = performance.now() - musicStartTime;
             this.elapsedTime = musicStartTime;
         }
+    } else if (musicEnded) {
+        // Music has ended - continue with timer but don't reset
+        // Just let elapsedTime continue from where it was
+        const now = performance.now();
+        this.elapsedTime = now - this.startTime;
     } else {
         // If not playing music (or fallback), use standard timer
         if (this.isPlaying && !this.isPaused) {
@@ -1088,6 +1117,9 @@ export class Player implements IPlayer {
           const secPerBeat = 60 / bpm;
           
           events.forEach(event => {
+              // Skip disabled events
+              if (!isEventEnabled(event)) return;
+              
               // Ensure floor is attached to the event for relativeTo: Tile
               const eventWithFloor = { ...event, floor };
               
@@ -1130,34 +1162,69 @@ export class Player implements IPlayer {
   }
 
   private processCameraEvent(event: any, floorIndex: number): void {
-      // If there's an active transition, finish it instantly (Logical transition only)
+      // Skip disabled events
+      if (!isEventEnabled(event)) return;
+      
+      // Capture current camera state as the new transition start point
+      // If there's an active transition, we need to capture the interpolated position
+      let currentLogicalPos = { ...this.cameraMode.position };
+      let currentLogicalZoom = this.cameraMode.zoom;
+      let currentLogicalRotation = this.cameraMode.rotation;
+
       if (this.cameraTransition.active) {
-           this.cameraTransition.active = false;
+          // Calculate current interpolated position from the ongoing transition
+          const transitionTime = (this.elapsedTime / 1000) - this.cameraTransition.startTime;
+          let t = transitionTime / this.cameraTransition.duration;
+          t = Math.max(0, Math.min(1, t));
+          
+          const easeFunc = EasingFunctions[this.cameraTransition.ease] || EasingFunctions.Linear;
+          const progress = easeFunc(t);
+          
+          const start = this.cameraTransition.startSnapshot;
+          
+          // Interpolate logical values
+          currentLogicalPos = {
+              x: start.logicalPosition.x + (this.cameraMode.position.x - start.logicalPosition.x) * progress,
+              y: start.logicalPosition.y + (this.cameraMode.position.y - start.logicalPosition.y) * progress
+          };
+          currentLogicalZoom = start.logicalZoom + (this.cameraMode.zoom - start.logicalZoom) * progress;
+          currentLogicalRotation = start.logicalRotation + (this.cameraMode.rotation - start.logicalRotation) * progress;
+          
+          this.cameraTransition.active = false;
       }
 
       const duration = (event.duration !== undefined) ? event.duration : 0;
-      const relativeTo = (event.relativeTo !== undefined) ? event.relativeTo : 'Player';
+      const relativeTo = event.relativeTo; // Can be undefined - treat as offset from current position
       
-      const startLogicalPos = { ...this.cameraMode.position };
-      const startLogicalZoom = this.cameraMode.zoom;
-      const startLogicalRotation = this.cameraMode.rotation;
+      const startLogicalPos = currentLogicalPos;
+      const startLogicalZoom = currentLogicalZoom;
+      const startLogicalRotation = currentLogicalRotation;
 
+      // Determine next relativeTo
+      // If relativeTo is undefined, keep current relativeTo (position will be treated as offset)
       let nextRelativeTo = this.cameraMode.relativeTo;
-      if (typeof relativeTo === 'string') {
-          nextRelativeTo = relativeTo;
-      } else if (typeof relativeTo === 'number') {
-          nextRelativeTo = ['Player', 'Tile', 'Global', 'LastPosition', 'LastPositionNoRotation'][relativeTo] || 'Player';
+      let relativeToSpecified = false;
+      
+      if (relativeTo !== undefined && relativeTo !== null) {
+          relativeToSpecified = true;
+          if (typeof relativeTo === 'string') {
+              nextRelativeTo = relativeTo;
+          } else if (typeof relativeTo === 'number') {
+              nextRelativeTo = ['Player', 'Tile', 'Global', 'LastPosition', 'LastPositionNoRotation'][relativeTo] || 'Player';
+          }
       }
 
-      // 1. Update RelativeTo & Anchor
-      if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
-          // Keep current relativeTo and anchorTileIndex
-      } else {
-          this.cameraMode.relativeTo = nextRelativeTo;
-          if (nextRelativeTo === 'Tile') {
-              this.cameraMode.anchorTileIndex = floorIndex;
-          } else if (nextRelativeTo === 'Global' || nextRelativeTo === 'Player') {
-              this.cameraMode.anchorTileIndex = 0; // Default or ignored
+      // 1. Update RelativeTo & Anchor (only if specified)
+      if (relativeToSpecified) {
+          if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
+              // Keep current relativeTo and anchorTileIndex
+          } else {
+              this.cameraMode.relativeTo = nextRelativeTo;
+              if (nextRelativeTo === 'Tile') {
+                  this.cameraMode.anchorTileIndex = floorIndex;
+              } else if (nextRelativeTo === 'Global' || nextRelativeTo === 'Player') {
+                  this.cameraMode.anchorTileIndex = 0; // Default or ignored
+              }
           }
       }
 
@@ -1166,7 +1233,13 @@ export class Player implements IPlayer {
           const px = event.position[0];
           const py = event.position[1];
           
-          if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
+          // If relativeTo is undefined, position is an offset from current position
+          // If relativeTo is LastPosition/LastPositionNoRotation, position is also an offset
+          // Otherwise, position is absolute
+          const isOffset = (relativeTo === undefined) || 
+                          (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation');
+          
+          if (isOffset) {
               if (px !== null && px !== undefined) this.cameraMode.position.x += px;
               if (py !== null && py !== undefined) this.cameraMode.position.y += py;
           } else {
@@ -1175,13 +1248,9 @@ export class Player implements IPlayer {
           }
       }
 
-      // 3. Update Rotation
+      // 3. Update Rotation (always absolute, not affected by relativeTo undefined)
       if (event.rotation !== undefined && event.rotation !== null) {
-          if (nextRelativeTo === 'LastPosition') {
-              this.cameraMode.rotation += event.rotation;
-          } else {
-              this.cameraMode.rotation = event.rotation;
-          }
+          this.cameraMode.rotation = event.rotation;
       }
 
       // 4. Update Zoom (Always absolute)
@@ -1698,15 +1767,17 @@ export class Player implements IPlayer {
             }
         } else {
             // Increment index as time progresses
+            // Track all tiles we pass through to ensure hitsound plays for each
             while (this.currentTileIndex + 1 < this.tileStartTimes.length && 
                    this.tileStartTimes[this.currentTileIndex + 1] <= timeInLevel) {
                 this.currentTileIndex++;
-                // Play hitsound when arriving at the new tile (tileStartTimes[i] is the arrival time)
-                // But we just incremented, so we're now at tileIndex, and we should have played when entering it
-                // Actually, the sound should play when we START rotating around this tile
-                // tileStartTimes[i] = time when we START at tile i (arrival time)
-                // So when we increment to i, we just arrived at tile i
-                this.hitsoundManager.play();
+                // Play hitsound when arriving at the new tile
+                // Skip hitsound for midspin tiles (angle=0) - they are instantaneous transitions
+                const currentTile = this.levelData.tiles[this.currentTileIndex];
+                const isMidspin = currentTile && (currentTile.angle === 0);
+                if (!isMidspin) {
+                    this.hitsoundManager.play();
+                }
             }
         }
     }

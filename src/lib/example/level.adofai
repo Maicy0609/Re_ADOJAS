@@ -1,0 +1,56 @@
+{
+	"settings": {
+		"version": 1,
+		"artist": "Gemini",
+		"song": "Sample.mp3",
+		"bpm": 120,
+		"trackColorType": "Gems",
+		"trackColor": "debb7b",
+		"secondaryTrackColor": "ffffff",
+		"trackStyle": "Standard"
+	},
+	"angleData": [0, 0, 0, 0, 0, 0, 0, 0],
+	"events": [
+		{
+			"floor": 1,
+			"eventType": "SetSpeed",
+			"speedType": "Bpm",
+			"beatsPerMinute": 120,
+			"bpmMultiplier": 1
+		},
+		{
+			"floor": 2,
+			"eventType": "Flash",
+			"duration": 1,
+			"plane": "Background",
+			"startColor": "ffffff",
+			"startOpacity": 100,
+			"endColor": "ffffff",
+			"endOpacity": 0,
+			"angleOffset": 0,
+			"ease": "Linear"
+		},
+		{
+			"floor": 4,
+			"eventType": "SetTrackColor",
+			"trackColorType": "Single",
+			"trackColor": "ff0000",
+			"secondaryTrackColor": "000000",
+			"trackColorAnimDuration": 1,
+			"trackColorPulse": "None",
+			"trackPulseLength": 10,
+			"trackStyle": "Neon"
+		},
+		{
+			"floor": 6,
+			"eventType": "SetTrackColor",
+			"trackColorType": "Gems",
+			"trackColor": "00ff00",
+			"secondaryTrackColor": "ffffff",
+			"trackColorAnimDuration": 2,
+			"trackColorPulse": "Forward",
+			"trackPulseLength": 5,
+			"trackStyle": "Gems"
+		}
+	]
+}

@@ -84,57 +84,58 @@ const createMidSpinMesh = (
 
     const midpoint = new THREE.Vector3(-m1 * 0.04, -m2 * 0.04, 0);
 
+    const blackColor: Color = { r: 0, g: 0, b: 0 };
+    const whiteColor: Color = { r: 1, g: 1, b: 1 };
+
     // Main body with outline
     widthi += outline;
     lengthi += outline;
 
-    let count = 0;
-    const blackColor: Color = { r: 0, g: 0, b: 0 };
+    {
+        const count = vertices.length / 3;
+        vertices.push(
+            midpoint.x + lengthi * m1 + widthi * m2, midpoint.y + lengthi * m2 - widthi * m1, 0,
+            midpoint.x + lengthi * m1 - widthi * m2, midpoint.y + lengthi * m2 + widthi * m1, 0,
+            midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0,
+            midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
+            midpoint.x - widthi * m1, midpoint.y - widthi * m2, 0,
+            midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
+            midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0
+        );
 
-    // Add vertices for main body
-    vertices.push(
-        midpoint.x + lengthi * m1 + widthi * m2, midpoint.y + lengthi * m2 - widthi * m1, 0,
-        midpoint.x + lengthi * m1 - widthi * m2, midpoint.y + lengthi * m2 + widthi * m1, 0,
-        midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0,
-        midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
-        midpoint.x - widthi * m1, midpoint.y - widthi * m2, 0,
-        midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
-        midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0
-    );
+        for (let i = 0; i < 7; i++) {
+            colors.push(blackColor.r, blackColor.g, blackColor.b);
+        }
 
-    // Add colors for main body
-    for (let i = 0; i < 7; i++) {
-        colors.push(blackColor.r, blackColor.g, blackColor.b);
+        faces.push(count, count + 1, count + 2);
+        faces.push(count + 2, count + 3, count);
+        faces.push(count + 4, count + 5, count + 6);
     }
-
-    // Add faces for main body
-    faces.push(count, count + 1, count + 2, count + 2, count + 3, count, count + 4, count + 5, count + 6);
 
     // Inner part (white)
-    width -= OUTLINE * 2;
-    lengthi -= OUTLINE * 2;
+    widthi -= outline * 2;
+    lengthi -= outline * 2;
 
-    count = vertices.length / 3;
-    const whiteColor: Color = { r: 1, g: 1, b: 1 };
+    {
+        const count = vertices.length / 3;
+        vertices.push(
+            midpoint.x + lengthi * m1 + widthi * m2, midpoint.y + lengthi * m2 - widthi * m1, 0,
+            midpoint.x + lengthi * m1 - widthi * m2, midpoint.y + lengthi * m2 + widthi * m1, 0,
+            midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0,
+            midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
+            midpoint.x - widthi * m1, midpoint.y - widthi * m2, 0,
+            midpoint.x + widthi * m2, midpoint.y - widthi * m1, 0,
+            midpoint.x - widthi * m2, midpoint.y + widthi * m1, 0
+        );
 
-    // Add vertices for inner part
-    vertices.push(
-        midpoint.x + lengthi * m1 + width * m2, midpoint.y + lengthi * m2 - width * m1, 0,
-        midpoint.x + lengthi * m1 - width * m2, midpoint.y + lengthi * m2 + width * m1, 0,
-        midpoint.x - width * m2, midpoint.y + width * m1, 0,
-        midpoint.x + width * m2, midpoint.y - width * m1, 0,
-        midpoint.x - width * m1, midpoint.y - width * m2, 0,
-        midpoint.x + width * m2, midpoint.y - width * m1, 0,
-        midpoint.x - width * m2, midpoint.y + width * m1, 0
-    );
+        for (let i = 0; i < 7; i++) {
+            colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+        }
 
-    // Add colors for inner part
-    for (let i = 0; i < 7; i++) {
-        colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+        faces.push(count, count + 1, count + 2);
+        faces.push(count + 2, count + 3, count);
+        faces.push(count + 4, count + 5, count + 6);
     }
-
-    // Add faces for inner part
-    faces.push(count, count + 1, count + 2, count + 2, count + 3, count, count + 4, count + 5, count + 6);
 
     return { vertices, faces, colors };
 };
@@ -150,7 +151,7 @@ const createTileMesh = (
     const faces: number[] = [];
     const colors: number[] = [];
 
-    // Basic processing
+    // Basic processing - same as Floor.cs CreateFloorPolygon
     const m11 = Math.cos((startAngle / 180) * Math.PI);
     const m12 = Math.sin((startAngle / 180) * Math.PI);
     const m21 = Math.cos((endAngle / 180) * Math.PI);
@@ -173,7 +174,7 @@ const createTileMesh = (
     const whiteColor: Color = { r: 1, g: 1, b: 1 };
 
     if (angle < 2.0943952 && angle > 0) {
-        // Small angle case
+        // Small angle case - same as Floor.cs
         let x: number;
         if (angle < 0.08726646) {
             x = 1;
@@ -199,54 +200,58 @@ const createTileMesh = (
         let circlex = -distance * Math.cos(mid);
         let circley = -distance * Math.sin(mid);
 
-        // Create outline
+        // Create outline (black)
         width += outline;
         length += outline;
         radius += outline;
 
         createCircle(new THREE.Vector3(circlex, circley, 0), radius, blackColor, vertices, faces, colors);
 
-        // Add connecting geometry for outline
-        let count = vertices.length / 3;
-        vertices.push(
-            -radius * Math.sin(a[1]) + circlex, radius * Math.cos(a[1]) + circley, 0,
-            circlex, circley, 0,
-            radius * Math.sin(a[0]) + circlex, -radius * Math.cos(a[0]) + circley, 0,
-            width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
-            0, 0, 0,
-            -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
-        );
+        // Add connecting geometry for outline - same as Floor.cs
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                -radius * Math.sin(a[1]) + circlex, radius * Math.cos(a[1]) + circley, 0,
+                circlex, circley, 0,
+                radius * Math.sin(a[0]) + circlex, -radius * Math.cos(a[0]) + circley, 0,
+                width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
+                0, 0, 0,
+                -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
+            );
 
-        for (let i = 0; i < 6; i++) {
-            colors.push(blackColor.r, blackColor.g, blackColor.b);
+            for (let i = 0; i < 6; i++) {
+                colors.push(blackColor.r, blackColor.g, blackColor.b);
+            }
+
+            faces.push(count, count + 1, count + 5);
+            faces.push(count + 4, count + 1, count + 5);
+            faces.push(count + 2, count + 3, count + 4);
+            faces.push(count + 1, count + 3, count + 4);
         }
-
-        faces.push(
-            count, count + 1, count + 5, count + 4, count + 1, count + 5,
-            count + 2, count + 3, count + 4, count + 1, count + 3, count + 4
-        );
 
         // Add end caps for outline
-        count = vertices.length / 3;
-        vertices.push(
-            length * m11 + width * m12, length * m12 - width * m11, 0,
-            length * m11 - width * m12, length * m12 + width * m11, 0,
-            -width * m12, width * m11, 0,
-            width * m12, -width * m11, 0,
-            length * m21 + width * m22, length * m22 - width * m21, 0,
-            length * m21 - width * m22, length * m22 + width * m21, 0,
-            -width * m22, width * m21, 0,
-            width * m22, -width * m21, 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                length * m11 + width * m12, length * m12 - width * m11, 0,
+                length * m11 - width * m12, length * m12 + width * m11, 0,
+                -width * m12, width * m11, 0,
+                width * m12, -width * m11, 0,
+                length * m21 + width * m22, length * m22 - width * m21, 0,
+                length * m21 - width * m22, length * m22 + width * m21, 0,
+                -width * m22, width * m21, 0,
+                width * m22, -width * m21, 0
+            );
 
-        for (let i = 0; i < 8; i++) {
-            colors.push(blackColor.r, blackColor.g, blackColor.b);
+            for (let i = 0; i < 8; i++) {
+                colors.push(blackColor.r, blackColor.g, blackColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
+            faces.push(count + 4, count + 5, count + 6);
+            faces.push(count + 6, count + 7, count + 4);
         }
-
-        faces.push(
-            count, count + 1, count + 2, count + 2, count + 3, count,
-            count + 4, count + 5, count + 6, count + 6, count + 7, count + 4
-        );
 
         // Create inner part (white)
         width -= outline * 2;
@@ -262,148 +267,205 @@ const createTileMesh = (
         createCircle(new THREE.Vector3(circlex, circley, 0), radius, whiteColor, vertices, faces, colors);
 
         // Add connecting geometry for inner part
-        count = vertices.length / 3;
-        vertices.push(
-            -radius * Math.sin(a[1]) + circlex, radius * Math.cos(a[1]) + circley, 0,
-            circlex, circley, 0,
-            radius * Math.sin(a[0]) + circlex, -radius * Math.cos(a[0]) + circley, 0,
-            width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
-            0, 0, 0,
-            -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                -radius * Math.sin(a[1]) + circlex, radius * Math.cos(a[1]) + circley, 0,
+                circlex, circley, 0,
+                radius * Math.sin(a[0]) + circlex, -radius * Math.cos(a[0]) + circley, 0,
+                width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
+                0, 0, 0,
+                -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
+            );
 
-        for (let i = 0; i < 6; i++) {
-            colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            for (let i = 0; i < 6; i++) {
+                colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            }
+
+            faces.push(count, count + 1, count + 5);
+            faces.push(count + 4, count + 1, count + 5);
+            faces.push(count + 2, count + 3, count + 4);
+            faces.push(count + 1, count + 3, count + 4);
         }
-
-        faces.push(
-            count, count + 1, count + 5, count + 4, count + 1, count + 5,
-            count + 2, count + 3, count + 4, count + 1, count + 3, count + 4
-        );
 
         // Add end caps for inner part
-        count = vertices.length / 3;
-        vertices.push(
-            length * m11 + width * m12, length * m12 - width * m11, 0,
-            length * m11 - width * m12, length * m12 + width * m11, 0,
-            -width * m12, width * m11, 0,
-            width * m12, -width * m11, 0,
-            length * m21 + width * m22, length * m22 - width * m21, 0,
-            length * m21 - width * m22, length * m22 + width * m21, 0,
-            -width * m22, width * m21, 0,
-            width * m22, -width * m21, 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                length * m11 + width * m12, length * m12 - width * m11, 0,
+                length * m11 - width * m12, length * m12 + width * m11, 0,
+                -width * m12, width * m11, 0,
+                width * m12, -width * m11, 0,
+                length * m21 + width * m22, length * m22 - width * m21, 0,
+                length * m21 - width * m22, length * m22 + width * m21, 0,
+                -width * m22, width * m21, 0,
+                width * m22, -width * m21, 0
+            );
 
-        for (let i = 0; i < 8; i++) {
-            colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            for (let i = 0; i < 8; i++) {
+                colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
+            faces.push(count + 4, count + 5, count + 6);
+            faces.push(count + 6, count + 7, count + 4);
         }
 
-        faces.push(
-            count, count + 1, count + 2, count + 2, count + 3, count,
-            count + 4, count + 5, count + 6, count + 6, count + 7, count + 4
-        );
-
     } else if (angle > 0) {
-        // Normal case
+        // Normal case - same as Floor.cs
         width += outline;
         length += outline;
 
-        const circlex = (-width / Math.sin(angle / 2)) * Math.cos(mid);
-        const circley = (-width / Math.sin(angle / 2)) * Math.sin(mid);
+        let circlex = (-width / Math.sin(angle / 2)) * Math.cos(mid);
+        let circley = (-width / Math.sin(angle / 2)) * Math.sin(mid);
 
         // Create outline
-        let count = 0;
-        vertices.push(
-            circlex, circley, 0,
-            width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
-            0, 0, 0,
-            -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                circlex, circley, 0,
+                width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
+                0, 0, 0,
+                -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
+            );
 
-        for (let i = 0; i < 4; i++) {
-            colors.push(blackColor.r, blackColor.g, blackColor.b);
+            for (let i = 0; i < 4; i++) {
+                colors.push(blackColor.r, blackColor.g, blackColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
         }
-
-        faces.push(count, count + 1, count + 2, count + 2, count + 3, count);
 
         // Add end caps for outline
-        count = vertices.length / 3;
-        vertices.push(
-            length * m11 + width * m12, length * m12 - width * m11, 0,
-            length * m11 - width * m12, length * m12 + width * m11, 0,
-            -width * m12, width * m11, 0,
-            width * m12, -width * m11, 0,
-            length * m21 + width * m22, length * m22 - width * m21, 0,
-            length * m21 - width * m22, length * m22 + width * m21, 0,
-            -width * m22, width * m21, 0,
-            width * m22, -width * m21, 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                length * m11 + width * m12, length * m12 - width * m11, 0,
+                length * m11 - width * m12, length * m12 + width * m11, 0,
+                -width * m12, width * m11, 0,
+                width * m12, -width * m11, 0,
+                length * m21 + width * m22, length * m22 - width * m21, 0,
+                length * m21 - width * m22, length * m22 + width * m21, 0,
+                -width * m22, width * m21, 0,
+                width * m22, -width * m21, 0
+            );
 
-        for (let i = 0; i < 8; i++) {
-            colors.push(blackColor.r, blackColor.g, blackColor.b);
+            for (let i = 0; i < 8; i++) {
+                colors.push(blackColor.r, blackColor.g, blackColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
+            faces.push(count + 4, count + 5, count + 6);
+            faces.push(count + 6, count + 7, count + 4);
         }
-
-        faces.push(
-            count, count + 1, count + 2, count + 2, count + 3, count,
-            count + 4, count + 5, count + 6, count + 6, count + 7, count + 4
-        );
 
         // Create inner part (white)
         width -= outline * 2;
         length -= outline * 2;
 
-        const innerCirclex = (-width / Math.sin(angle / 2)) * Math.cos(mid);
-        const innerCircley = (-width / Math.sin(angle / 2)) * Math.sin(mid);
+        circlex = (-width / Math.sin(angle / 2)) * Math.cos(mid);
+        circley = (-width / Math.sin(angle / 2)) * Math.sin(mid);
 
-        count = vertices.length / 3;
-        vertices.push(
-            innerCirclex, innerCircley, 0,
-            width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
-            0, 0, 0,
-            -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                circlex, circley, 0,
+                width * Math.sin(a[0]), -width * Math.cos(a[0]), 0,
+                0, 0, 0,
+                -width * Math.sin(a[1]), width * Math.cos(a[1]), 0
+            );
 
-        for (let i = 0; i < 4; i++) {
-            colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            for (let i = 0; i < 4; i++) {
+                colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
         }
-
-        faces.push(count, count + 1, count + 2, count + 2, count + 3, count);
 
         // Add end caps for inner part
-        count = vertices.length / 3;
-        vertices.push(
-            length * m11 + width * m12, length * m12 - width * m11, 0,
-            length * m11 - width * m12, length * m12 + width * m11, 0,
-            -width * m12, width * m11, 0,
-            width * m12, -width * m11, 0,
-            length * m21 + width * m22, length * m22 - width * m21, 0,
-            length * m21 - width * m22, length * m22 + width * m21, 0,
-            -width * m22, width * m21, 0,
-            width * m22, -width * m21, 0
-        );
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                length * m11 + width * m12, length * m12 - width * m11, 0,
+                length * m11 - width * m12, length * m12 + width * m11, 0,
+                -width * m12, width * m11, 0,
+                width * m12, -width * m11, 0,
+                length * m21 + width * m22, length * m22 - width * m21, 0,
+                length * m21 - width * m22, length * m22 + width * m21, 0,
+                -width * m22, width * m21, 0,
+                width * m22, -width * m21, 0
+            );
 
-        for (let i = 0; i < 8; i++) {
-            colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            for (let i = 0; i < 8; i++) {
+                colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
+            faces.push(count + 4, count + 5, count + 6);
+            faces.push(count + 6, count + 7, count + 4);
+        }
+    } else {
+        // 180 degree case - same as Floor.cs
+        length = width;
+        width += outline;
+        length += outline;
+
+        const midpoint = new THREE.Vector3(-m11 * 0.04, -m12 * 0.04, 0);
+
+        // Create semicircle (main body)
+        createCircle(midpoint, width, blackColor, vertices, faces, colors);
+
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                midpoint.x + length * m11 + width * m12, midpoint.y + length * m12 - width * m11, 0,
+                midpoint.x + length * m11 - width * m12, midpoint.y + length * m12 + width * m11, 0,
+                midpoint.x - width * m12, midpoint.y + width * m11, 0,
+                midpoint.x + width * m12, midpoint.y - width * m11, 0
+            );
+
+            for (let i = 0; i < 4; i++) {
+                colors.push(blackColor.r, blackColor.g, blackColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
         }
 
-        faces.push(
-            count, count + 1, count + 2, count + 2, count + 3, count,
-            count + 4, count + 5, count + 6, count + 6, count + 7, count + 4
-        );
+        // Inner part (white)
+        width -= outline * 2;
+        length -= outline * 2;
+
+        createCircle(midpoint, width, whiteColor, vertices, faces, colors);
+
+        {
+            const count = vertices.length / 3;
+            vertices.push(
+                midpoint.x + length * m11 + width * m12, midpoint.y + length * m12 - width * m11, 0,
+                midpoint.x + length * m11 - width * m12, midpoint.y + length * m12 + width * m11, 0,
+                midpoint.x - width * m12, midpoint.y + width * m11, 0,
+                midpoint.x + width * m12, midpoint.y - width * m11, 0
+            );
+
+            for (let i = 0; i < 4; i++) {
+                colors.push(whiteColor.r, whiteColor.g, whiteColor.b);
+            }
+
+            faces.push(count, count + 1, count + 2);
+            faces.push(count + 2, count + 3, count);
+        }
     }
 
     return { vertices, faces, colors };
 };
 
 
-
-// 导出接口和函数
-interface MeshData {
-  vertices: number[];
-  colors: number[];
-  faces: number[];
-}
-
+// Export interface and functions
 export { fmod, lerp, createCircle, createMidSpinMesh, createTileMesh };
 export type { MeshData };
 export default createTrackMesh;
