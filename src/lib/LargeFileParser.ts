@@ -407,7 +407,7 @@ export class LargeFileParser {
     // Find ALL properties at root level in one pass
     const properties = findAllPropertiesAtRoot(view);
     
-    console.log('[LargeFileParser] Found properties:', Array.from(properties.keys()));
+    // Found properties (silent)
     
     const angleDataPos = properties.get('angleData') ?? -1;
     const pathDataPos = properties.get('pathData') ?? -1;
@@ -421,15 +421,10 @@ export class LargeFileParser {
     if (settingsPos !== -1) {
       if (this.onProgress) this.onProgress('parsing_settings', 10);
       const settingsEnd = findValueEnd(view, settingsPos);
-      console.log('[LargeFileParser] Settings position:', settingsPos, 'end:', settingsEnd, 'size:', settingsEnd - settingsPos);
       if (settingsEnd !== -1) {
         const settingsStr = extractValueAsString(view, settingsPos, settingsEnd);
-        console.log('[LargeFileParser] Settings string preview:', settingsStr.substring(0, 500));
         try {
           result.settings = JSON.parse(settingsStr);
-          console.log('[LargeFileParser] Settings parsed, keys:', Object.keys(result.settings || {}));
-          console.log('[LargeFileParser] Settings hitsound:', result.settings?.hitsound);
-          console.log('[LargeFileParser] Settings hitsoundVolume:', result.settings?.hitsoundVolume);
         } catch (e) {
           console.warn('[LargeFileParser] Failed to parse settings:', e);
           result.settings = {};
@@ -447,7 +442,7 @@ export class LargeFileParser {
       });
       if (angleResult) {
         result.angleData = angleResult.values;
-        console.log(`[LargeFileParser] Parsed ${angleResult.values.length} angles`);
+        // AngleData parsed
       }
     }
 
@@ -468,10 +463,10 @@ export class LargeFileParser {
       if (this.onProgress) this.onProgress('parsing_actions', 50);
 
       if (actionsSize > 100 * 1024 * 1024 && this.skipLargeActions) {
-        console.log(`[LargeFileParser] Skipping large actions (${actionsSize} bytes)`);
+        // Skipping large actions
         result.actions = [];
       } else if (actionsSize > 50 * 1024 * 1024) {
-        console.log(`[LargeFileParser] Parsing actions incrementally (${actionsSize} bytes)`);
+        // Parsing actions incrementally
         const actionsResult = parseObjectArrayIncremental(
           view,
           actionsPos,
@@ -484,7 +479,7 @@ export class LargeFileParser {
         );
         if (actionsResult) {
           result.actions = actionsResult.values;
-          console.log(`[LargeFileParser] Parsed ${actionsResult.values.length} actions`);
+          // Actions parsed
         }
       } else {
         const actionsStr = extractValueAsString(view, actionsPos, actionsEnd);

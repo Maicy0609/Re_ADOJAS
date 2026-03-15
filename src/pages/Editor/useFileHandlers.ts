@@ -15,6 +15,9 @@ const parser = new StringParser()
 // 大文件阈值 - V8 字符串限制约为 512MB，我们设置安全阈值
 const LARGE_FILE_THRESHOLD = 400 * 1024 * 1024 // 400MB
 
+// 超大文件阈值 - 需要提前预合成 hitsound
+const VERY_LARGE_FILE_THRESHOLD = 90 * 1024 * 1024 // 90MB
+
 // 获取加载阶段的显示文本
 const getStageText = (stage: ParseProgressEvent['stage'] | string, t: (key: string) => string): string => {
   switch (stage) {
@@ -80,24 +83,36 @@ export function useFileHandlers({
 }: UseFileHandlersProps) {
   
   // 辅助函数：初始化玩家并合成打拍音
-  const initializePlayerWithHitsounds = async (loadedLevel: any): Promise<void> => {
+  const initializePlayerWithHitsounds = async (loadedLevel: any, isVeryLargeFile: boolean = false): Promise<void> => {
     initializePlayer(loadedLevel)
     
     // Synthesize hitsounds with progress display
     if (previewerRef.current) {
-      setLoadingProgress(96)
-      setLoadingStatus(t("loading.synthesizingHitsounds"))
-      
-      await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
-        // Map 0-100 to 96-100
-        const mappedPercent = 96 + (percent / 100) * 4
-        setLoadingProgress(mappedPercent)
-      })
+      if (isVeryLargeFile) {
+        // 对于超大文件，显示详细的合成进度
+        setLoadingProgress(85)
+        setLoadingStatus(t("loading.synthesizingHitsounds"))
+        
+        await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
+          // Map 0-100 to 85-99
+          const mappedPercent = 85 + (percent / 100) * 14
+          setLoadingProgress(mappedPercent)
+        })
+      } else {
+        setLoadingProgress(96)
+        setLoadingStatus(t("loading.synthesizingHitsounds"))
+        
+        await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
+          // Map 0-100 to 96-100
+          const mappedPercent = 96 + (percent / 100) * 4
+          setLoadingProgress(mappedPercent)
+        })
+      }
     }
   }
 
   // 大文件加载 - 使用 LargeFileParser 直接从 ArrayBuffer 解析
-  const loadLargeFile = async (arrayBuffer: ArrayBuffer): Promise<void> => {
+  const loadLargeFile = async (arrayBuffer: ArrayBuffer, isVeryLargeFile: boolean = false): Promise<void> => {
     console.log('[DEBUG] Using LargeFileParser for large file')
     setLoadingStatus("正在预处理大文件...")
     setLoadingProgress(0)
@@ -106,7 +121,8 @@ export function useFileHandlers({
       // 创建大文件解析器
       const largeFileParser = new LargeFileParser((stage, percent) => {
         setLoadingStatus(getStageText(stage, t))
-        setLoadingProgress(Math.round(percent * 0.8)) // 0-80% for parsing
+        // 对于超大文件，解析进度 0-80%，对于普通大文件也是 0-80%
+        setLoadingProgress(Math.round(percent * 0.8))
       })
 
       // 解析文件
@@ -124,23 +140,23 @@ export function useFileHandlers({
 
       // 监听进度事件
       level.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-        setLoadingProgress(80 + Math.round(progressEvent.percent * 0.15))
+        setLoadingProgress(80 + Math.round(progressEvent.percent * 0.05))
         setLoadingStatus(getStageText(progressEvent.stage, t))
       })
 
       level.on("load", async (loadedLevel: any): Promise<void> => {
         // 计算瓦片位置
         loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-          setLoadingProgress(80 + Math.round(progressEvent.percent * 0.15))
+          setLoadingProgress(80 + Math.round(progressEvent.percent * 0.05))
           setLoadingStatus(getStageText(progressEvent.stage, t))
         })
         loadedLevel.calculateTilePosition()
 
-        setLoadingProgress(95)
+        setLoadingProgress(85)
         setLoadingStatus(t("loading.buildingScene"))
 
         // Initialize player and synthesize hitsounds
-        await initializePlayerWithHitsounds(loadedLevel)
+        await initializePlayerWithHitsounds(loadedLevel, isVeryLargeFile)
 
         setLoadingProgress(100)
         window.showNotification?.("success", t("editor.notifications.loadSuccess"))
@@ -318,14 +334,20 @@ export function useFileHandlers({
           const fileSize = arrayBuffer?.byteLength || 0
           console.log('[DEBUG] ArrayBuffer size:', fileSize)
           
-          // 判断是否为大文件
+          // 判断是否为超大文件 (>90MB) 或大文件 (>400MB)
+          const isVeryLargeFile = fileSize > VERY_LARGE_FILE_THRESHOLD
           const isLargeFile = fileSize > LARGE_FILE_THRESHOLD
+          console.log('[DEBUG] Is very large file:', isVeryLargeFile, '(threshold:', VERY_LARGE_FILE_THRESHOLD, ')')
           console.log('[DEBUG] Is large file:', isLargeFile, '(threshold:', LARGE_FILE_THRESHOLD, ')')
 
           if (isLargeFile) {
             // 大文件：直接使用 ArrayBuffer 解析，不转换为字符串
             console.log('[DEBUG] Using large file parser')
-            await loadLargeFile(arrayBuffer)
+            await loadLargeFile(arrayBuffer, isVeryLargeFile)
+          } else if (isVeryLargeFile) {
+            // 超大文件但不是极大文件：也使用 LargeFileParser
+            console.log('[DEBUG] Using large file parser for very large file')
+            await loadLargeFile(arrayBuffer, true)
           } else {
             // 小文件：转换为字符串后解析
             const decoder = new TextDecoder('utf-8')

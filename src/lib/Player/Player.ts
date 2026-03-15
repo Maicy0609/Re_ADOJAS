@@ -264,6 +264,14 @@ export class Player implements IPlayer {
    */
   public async preSynthesizeHitsoundsWithProgress(onProgress?: (percent: number) => void): Promise<void> {
     console.log('[Player] preSynthesizeHitsoundsWithProgress called');
+    
+    // Check if hitsounds are disabled or set to None
+    if (!this.hitsoundManager.isEnabled() || this.hitsoundManager.getHitsoundType() === 'None') {
+      console.log('[Player] Hitsounds disabled or set to None, skipping synthesis');
+      if (onProgress) onProgress(100);
+      return;
+    }
+    
     if (!this.tileStartTimes || this.tileStartTimes.length === 0) {
       console.log('[Player] No tileStartTimes, skipping hitsound synthesis');
       return;
