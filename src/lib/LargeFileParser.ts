@@ -9,78 +9,79 @@
 const BOM = new Uint8Array([0xef, 0xbb, 0xbf]);
 
 /**
- * Find the position of a property ONLY at root object level
- * This prevents finding property names inside nested arrays/objects
+ * Find ALL properties at root object level
+ * Returns a map of property name -> value start position
  */
-function findPropertyAtRoot(buffer: Uint8Array, propertyName: string): number {
-  const searchStr = `"${propertyName}"`;
-  const searchBytes = new TextEncoder().encode(searchStr);
-
-  let depth = 0;  // Track JSON nesting depth
+function findAllPropertiesAtRoot(buffer: Uint8Array): Map<string, number> {
+  const result = new Map<string, number>();
+  
+  // Track JSON state
+  let depth = 0;
   let inString = false;
   let escapeNext = false;
-
-  for (let i = 0; i < buffer.length - searchBytes.length; i++) {
+  let lastQuoteEnd = -1;
+  
+  // Property name tracking
+  let propertyNameStart = -1;
+  let propertyName = '';
+  
+  for (let i = 0; i < buffer.length; i++) {
     const byte = buffer[i];
-
+    
     // Handle escape sequences
     if (escapeNext) {
       escapeNext = false;
       continue;
     }
-
-    if (byte === 92) { // \
+    
+    if (byte === 92) { // backslash
       escapeNext = true;
       continue;
     }
-
+    
     // Track string boundaries
-    if (byte === 34) { // "
-      inString = !inString;
+    if (byte === 34) { // quote
+      if (inString) {
+        // End of string
+        inString = false;
+        lastQuoteEnd = i;
+        
+        // If we're at depth 1 and this was a property name (next non-whitespace is colon)
+        if (depth === 1 && propertyNameStart !== -1) {
+          // Extract property name
+          const nameBytes = buffer.slice(propertyNameStart, i);
+          const decoder = new TextDecoder('utf-8');
+          propertyName = decoder.decode(nameBytes);
+        }
+      } else {
+        // Start of string
+        inString = true;
+        propertyNameStart = i + 1; // +1 to skip the quote
+      }
       continue;
     }
-
-    // Track object/array depth (only when not in string)
+    
+    // Track object depth (not array depth for property finding)
     if (!inString) {
-      if (byte === 123 || byte === 91) { // { or [
+      if (byte === 123) { // {
         depth++;
-      } else if (byte === 125 || byte === 93) { // } or ]
+      } else if (byte === 125) { // }
         depth--;
-      }
-
-      // Only search for property at root level (depth === 1)
-      // The root object is at depth 1, so its direct properties are at depth 1
-      if (depth === 1) {
-        // Check if this position matches the property name
-        let match = true;
-        for (let j = 0; j < searchBytes.length; j++) {
-          if (buffer[i + j] !== searchBytes[j]) {
-            match = false;
-            break;
-          }
+      } else if (byte === 58 && depth === 1 && propertyName) { // colon at root level
+        // This is a property! Find value start
+        let pos = i + 1;
+        // Skip whitespace
+        while (pos < buffer.length && (buffer[pos] === 32 || buffer[pos] === 9 || buffer[pos] === 10 || buffer[pos] === 13)) {
+          pos++;
         }
-
-        if (match) {
-          // Found property name, now find the colon and value
-          let pos = i + searchBytes.length;
-          // Skip whitespace
-          while (pos < buffer.length && (buffer[pos] === 32 || buffer[pos] === 9 || buffer[pos] === 10 || buffer[pos] === 13)) {
-            pos++;
-          }
-          if (buffer[pos] === 58) { // colon
-            pos++;
-            // Skip whitespace after colon
-            while (pos < buffer.length && (buffer[pos] === 32 || buffer[pos] === 9 || buffer[pos] === 10 || buffer[pos] === 13)) {
-              pos++;
-            }
-            return pos;
-          }
-        }
+        result.set(propertyName, pos);
+        propertyName = '';
+        propertyNameStart = -1;
       }
     }
   }
-
-  return -1;
+  
+  return result;
 }
 
 /**
@@ -224,7 +225,6 @@ function parseNumberArrayIncremental(
       } else if (byte === 93) {
         depth--;
         if (depth === 0) {
-          // Push last value if not after comma
           if (currentValue.trim() && !lastWasComma) {
             const num = Number(currentValue.trim());
             if (!isNaN(num)) {
@@ -236,7 +236,6 @@ function parseNumberArrayIncremental(
         i++;
         lastWasComma = false;
       } else if (byte === 44) {
-        // Handle trailing comma: only push if we have a value
         if (currentValue.trim() && !lastWasComma) {
           const num = Number(currentValue.trim());
           if (!isNaN(num)) {
@@ -251,7 +250,6 @@ function parseNumberArrayIncremental(
         lastWasComma = false;
         i++;
       } else if (byte === 32 || byte === 9 || byte === 10 || byte === 13) {
-        // Skip whitespace
         i++;
       } else {
         i++;
@@ -289,12 +287,10 @@ function parseObjectArrayIncremental(
   let objectCount = 0;
   let lastWasComma = false;
 
-  // Skip initial whitespace
   while (i < buffer.length && (buffer[i] === 32 || buffer[i] === 9 || buffer[i] === 10 || buffer[i] === 13)) {
     i++;
   }
 
-  // Empty array check
   if (buffer[i] === 93) {
     return { values: [], endPos: i + 1 };
   }
@@ -321,17 +317,13 @@ function parseObjectArrayIncremental(
     }
 
     if (!inString) {
-      if (byte === 123) { // {
-        if (depth === 1 && objectStart === -1 && !lastWasComma) {
+      if (byte === 123) {
+        if (depth === 1 && objectStart === -1) {
           objectStart = i;
-        } else if (depth === 1 && objectStart === -1 && lastWasComma) {
-          // This is after a comma, so it's a valid object start
-          objectStart = i;
-          lastWasComma = false;
         }
         depth++;
         i++;
-      } else if (byte === 125) { // }
+      } else if (byte === 125) {
         depth--;
         if (depth === 1 && objectStart !== -1) {
           const objStr = extractValueAsString(buffer, objectStart, i + 1);
@@ -403,34 +395,29 @@ export class LargeFileParser {
    * Parse ArrayBuffer - NO MEMORY COPYING
    */
   parse(input: ArrayBuffer): any {
-    // Create view without copying
     let view = new Uint8Array(input);
 
-    // Strip BOM by adjusting the view
+    // Strip BOM
     if (view.length >= 3 && view[0] === BOM[0] && view[1] === BOM[1] && view[2] === BOM[2]) {
       view = view.subarray(3);
     }
 
     if (this.onProgress) this.onProgress('scanning', 5);
 
-    // Find properties ONLY at root level
-    const angleDataPos = findPropertyAtRoot(view, 'angleData');
-    const pathDataPos = findPropertyAtRoot(view, 'pathData');
-    const settingsPos = findPropertyAtRoot(view, 'settings');
-    const actionsPos = findPropertyAtRoot(view, 'actions');
-    const decorationsPos = findPropertyAtRoot(view, 'decorations');
-
-    console.log('[LargeFileParser] Property positions:', {
-      angleData: angleDataPos,
-      pathData: pathDataPos,
-      settings: settingsPos,
-      actions: actionsPos,
-      decorations: decorationsPos
-    });
+    // Find ALL properties at root level in one pass
+    const properties = findAllPropertiesAtRoot(view);
+    
+    console.log('[LargeFileParser] Found properties:', Array.from(properties.keys()));
+    
+    const angleDataPos = properties.get('angleData') ?? -1;
+    const pathDataPos = properties.get('pathData') ?? -1;
+    const settingsPos = properties.get('settings') ?? -1;
+    const actionsPos = properties.get('actions') ?? -1;
+    const decorationsPos = properties.get('decorations') ?? -1;
 
     const result: any = {};
 
-    // Parse settings (small)
+    // Parse settings FIRST (contains hitsound info)
     if (settingsPos !== -1) {
       if (this.onProgress) this.onProgress('parsing_settings', 10);
       const settingsEnd = findValueEnd(view, settingsPos);
@@ -438,9 +425,9 @@ export class LargeFileParser {
         const settingsStr = extractValueAsString(view, settingsPos, settingsEnd);
         try {
           result.settings = JSON.parse(settingsStr);
-          console.log('[LargeFileParser] Settings parsed, hitsound:', result.settings?.hitsound);
+          console.log('[LargeFileParser] Settings hitsound:', result.settings?.hitsound);
         } catch (e) {
-          console.warn('Failed to parse settings:', e);
+          console.warn('[LargeFileParser] Failed to parse settings:', e);
           result.settings = {};
         }
       }
@@ -480,7 +467,6 @@ export class LargeFileParser {
         console.log(`[LargeFileParser] Skipping large actions (${actionsSize} bytes)`);
         result.actions = [];
       } else if (actionsSize > 50 * 1024 * 1024) {
-        // Parse incrementally for large arrays
         console.log(`[LargeFileParser] Parsing actions incrementally (${actionsSize} bytes)`);
         const actionsResult = parseObjectArrayIncremental(
           view,
@@ -497,12 +483,11 @@ export class LargeFileParser {
           console.log(`[LargeFileParser] Parsed ${actionsResult.values.length} actions`);
         }
       } else {
-        // Small enough to parse directly
         const actionsStr = extractValueAsString(view, actionsPos, actionsEnd);
         try {
           result.actions = JSON.parse(actionsStr);
         } catch (e) {
-          console.warn('Failed to parse actions:', e);
+          console.warn('[LargeFileParser] Failed to parse actions:', e);
           result.actions = [];
         }
       }
@@ -517,7 +502,7 @@ export class LargeFileParser {
         try {
           result.decorations = JSON.parse(decorationsStr);
         } catch (e) {
-          console.warn('Failed to parse decorations:', e);
+          console.warn('[LargeFileParser] Failed to parse decorations:', e);
           result.decorations = [];
         }
       }
