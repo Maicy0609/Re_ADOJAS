@@ -163,8 +163,11 @@ export class Player implements IPlayer {
     }
 
     // Initialize HitsoundManager
-    const hitsoundType = (this.levelData.settings?.hitsound || 'Kick') as HitsoundType;
+    // If hitsound is "None" or empty, default to "Kick"
+    const rawHitsound = this.levelData.settings?.hitsound;
+    const hitsoundType = (!rawHitsound || rawHitsound === 'None' ? 'Kick' : rawHitsound) as HitsoundType;
     const hitsoundVolume = this.levelData.settings?.hitsoundVolume ?? 100;
+    console.log('[Player] Initializing HitsoundManager with type:', hitsoundType, 'volume:', hitsoundVolume, '(raw:', rawHitsound, ')');
     this.hitsoundManager = new HitsoundManager(hitsoundType, hitsoundVolume);
 
     // Initialize Three.js components
