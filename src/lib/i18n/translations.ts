@@ -161,7 +161,7 @@ export const translations = {
       },
       lockCamera: {
         title: "锁定镜头",
-        description: "启用后镜头位置将强制锁定在当前砖块中心（保留缩放/旋转效果），忽略关卡中的摄像头位置移动事件。退出播放后生效。",
+        description: "启用后，每次行星触发砖块时镜头将瞬移至该砖块中心（仅保留缩放效果，忽略旋转）。退出播放后生效。",
         enabled: "已启用",
         disabled: "已禁用",
       },
@@ -339,7 +339,7 @@ export const translations = {
       },
       lockCamera: {
         title: "Lock Camera",
-        description: "When enabled, camera position is locked to the current tile center (preserving zoom/rotation effects), ignoring camera position movement events in the level. Takes effect after exiting playback.",
+        description: "When enabled, camera instantly teleports to the current tile center on each tile trigger (preserving zoom only, ignoring rotation). Takes effect after exiting playback.",
         enabled: "Enabled",
         disabled: "Disabled",
       },
@@ -517,7 +517,7 @@ export const translations = {
       },
       lockCamera: {
         title: "カメラロック",
-        description: "有効にすると、カメラ位置が現在のタイルの中心に強制ロックされ（ズーム/回転効果は保持）、レベル内のカメラ位置移動イベントが無視されます。再生終了後に反映されます。",
+        description: "有効にすると、惑星がタイルをトリガーするたびにカメラが瞬時にそのタイルの中心に移動します（ズーム効果のみ保持、回転は無視）。再生終了後に反映されます。",
         enabled: "有効",
         disabled: "無効",
       },

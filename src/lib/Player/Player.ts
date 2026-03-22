@@ -1852,38 +1852,40 @@ export class Player implements IPlayer {
       // Get interpolated camera values
       const interpolated = this.cameraController.getInterpolatedValues(this.elapsedTime);
       
-      // Calculate target position - Lock Camera only overrides position, not zoom/rotation
-      let target: { x: number; y: number };
+      // Lock Camera: instant teleport to current tile center, preserve zoom only
       if (this.lockCameraEnabled) {
-          // Lock Camera: target is always the current tile center
+          // Instantly teleport camera to current tile center (no smoothing)
           const tile = this.levelData.tiles[this.currentTileIndex];
           if (tile && tile.position) {
-              target = { x: tile.position[0], y: tile.position[1] };
-          } else {
-              target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+              this.cameraPosition.x = tile.position[0];
+              this.cameraPosition.y = tile.position[1];
           }
       } else {
-          target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+          // Normal camera follow with smoothing
+          const target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+          const currentBPM = (this.tileBPM && this.tileBPM[this.currentTileIndex]) || 100;
+          const smoothingIndex = 15 * Math.pow(100 / Math.max(1, currentBPM), 0.15);
+          const step = 1.0 - Math.pow(1.0 - 1.0 / smoothingIndex, delta * 60);
+
+          this.cameraPosition.x += (target.x - this.cameraPosition.x) * step;
+          this.cameraPosition.y += (target.y - this.cameraPosition.y) * step;
       }
 
-      // Apply smoothing
-      const currentBPM = (this.tileBPM && this.tileBPM[this.currentTileIndex]) || 100;
-      const smoothingIndex = 15 * Math.pow(100 / Math.max(1, currentBPM), 0.15);
-      
-      const step = 1.0 - Math.pow(1.0 - 1.0 / smoothingIndex, delta * 60);
-      
-      this.cameraPosition.x += (target.x - this.cameraPosition.x) * step;
-      this.cameraPosition.y += (target.y - this.cameraPosition.y) * step;
-
-      // Update camera
+      // Update camera position
       this.camera.position.x = this.cameraPosition.x;
       this.camera.position.y = this.cameraPosition.y;
-      
+
+      // Zoom: always apply from camera events
       this.zoom = 100 / interpolated.zoom;
       this.camera.zoom = this.zoom * this.zoomMultiplier;
       this.camera.updateProjectionMatrix();
-      
-      this.camera.rotation.z = interpolated.rotation * (Math.PI / 180);
+
+      // Rotation: only apply when Lock Camera is disabled
+      if (this.lockCameraEnabled) {
+          this.camera.rotation.z = 0;
+      } else {
+          this.camera.rotation.z = interpolated.rotation * (Math.PI / 180);
+      }
 
       // Sync Video Background
       if (this.videoMesh) {
