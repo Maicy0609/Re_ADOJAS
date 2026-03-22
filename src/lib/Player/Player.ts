@@ -22,6 +22,7 @@ export class Player implements IPlayer {
   private showTrail: boolean = false;
   private useWorker: boolean = true;
   private targetFramerate: TargetFramerateType = 'auto';
+  private lockCameraEnabled: boolean = false; // Lock Camera: 强制锁定镜头到当前 Tile
   private animationId: number | null = null;
   private lastFrameTime: number = 0;
   private frameInterval: number = 0; // milliseconds between frames
@@ -668,6 +669,10 @@ export class Player implements IPlayer {
   public setTargetFramerate(framerate: TargetFramerateType): void {
     this.targetFramerate = framerate;
     this.updateFrameInterval();
+  }
+
+  public setLockCamera(enabled: boolean): void {
+    this.lockCameraEnabled = enabled;
   }
 
   private updateFrameInterval(): void {
@@ -1674,7 +1679,7 @@ export class Player implements IPlayer {
     if (timeInLevel < 0) {
         // Countdown phase - handled by standard logic
     }
-    
+
     // Playing Phase
     if (this.tileStartTimes.length > 0) {
         if (timeInLevel < this.tileStartTimes[this.currentTileIndex]) {
@@ -1796,7 +1801,7 @@ export class Player implements IPlayer {
       const currentTimeInSeconds = this.elapsedTime / 1000;
       const timeInLevel = currentTimeInSeconds - countdownDuration - (offset / 1000) - firstTileOffset;
 
-      // Process camera events
+      // Process camera events (still process even with Lock Camera for zoom/rotation effects)
       const lastIdx = this.cameraController.getLastCameraTimelineIndex();
       const cameraTimeline = this.cameraController.getCameraTimeline();
       
@@ -1847,8 +1852,19 @@ export class Player implements IPlayer {
       // Get interpolated camera values
       const interpolated = this.cameraController.getInterpolatedValues(this.elapsedTime);
       
-      // Calculate target position
-      const target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+      // Calculate target position - Lock Camera only overrides position, not zoom/rotation
+      let target: { x: number; y: number };
+      if (this.lockCameraEnabled) {
+          // Lock Camera: target is always the current tile center
+          const tile = this.levelData.tiles[this.currentTileIndex];
+          if (tile && tile.position) {
+              target = { x: tile.position[0], y: tile.position[1] };
+          } else {
+              target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+          }
+      } else {
+          target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
+      }
 
       // Apply smoothing
       const currentBPM = (this.tileBPM && this.tileBPM[this.currentTileIndex]) || 100;

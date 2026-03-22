@@ -87,6 +87,7 @@ export function useEditorState() {
       player.setUseWorker(settings.useWorker)
       player.setTargetFramerate(settings.targetFramerate)
       player.setStatsPanel(settings.showStats)
+      player.setLockCamera(settings.lockCamera ?? false)
       
       // Only set stats callback if not using stats.js
       if (!settings.showStats) {
@@ -242,6 +243,15 @@ export function useEditorState() {
     }
   }, [settings.showStats])
 
+  // Lock Camera：在进入预览模式或 Lock Camera 设置变更时生效
+  useEffect(() => {
+    if (!previewerRef.current) return
+
+    if (playMode === "preview") {
+      previewerRef.current.setLockCamera(settings.lockCamera ?? false)
+    }
+  }, [playMode, settings.lockCamera])
+
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -291,6 +301,7 @@ export function useEditorState() {
             player.setUseWorker(settings.useWorker)
             player.setTargetFramerate(settings.targetFramerate)
             player.setStatsPanel(settings.showStats)
+            player.setLockCamera(settings.lockCamera ?? false)
             
             // Synthesize hitsounds
             await player.preSynthesizeHitsoundsWithProgress()

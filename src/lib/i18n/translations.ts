@@ -159,6 +159,19 @@ export const translations = {
         async: "异步（推荐）",
         worker: "Worker（后台线程）",
       },
+      lockCamera: {
+        title: "Lock Camera (锁定镜头)",
+        description: "启用后镜头将强制锁定在当前行星触发的砖块上，使其居中显示，忽略关卡中所有摄像头移动事件。退出播放后生效。",
+        enabled: "已启用",
+        disabled: "已禁用",
+      },
+      fullscreen: {
+        title: "全屏模式",
+        description: "点击进入全屏模式，再次点击退出全屏。",
+        enter: "进入全屏",
+        exit: "退出全屏",
+        notSupported: "您的浏览器不支持全屏功能",
+      },
       themePreview: {
         title: "主题预览",
       },
@@ -324,6 +337,19 @@ export const translations = {
         async: "Async (Recommended)",
         worker: "Worker (Background Thread)",
       },
+      lockCamera: {
+        title: "Lock Camera",
+        description: "When enabled, camera is locked to the current tile center, ignoring all camera movement events in the level. Takes effect after exiting playback.",
+        enabled: "Enabled",
+        disabled: "Disabled",
+      },
+      fullscreen: {
+        title: "Fullscreen Mode",
+        description: "Click to enter fullscreen mode, click again to exit.",
+        enter: "Enter Fullscreen",
+        exit: "Exit Fullscreen",
+        notSupported: "Your browser does not support fullscreen mode",
+      },
       themePreview: {
         title: "Theme Preview",
       },
@@ -488,6 +514,19 @@ export const translations = {
         sync: "同期（UIをブロック）",
         async: "非同期（推奨）",
         worker: "ワーカー（バックグラウンドスレッド）",
+      },
+      lockCamera: {
+        title: "Lock Camera (カメラロック)",
+        description: "有効にすると、カメラが現在のタイルの中心に強制ロックされ、レベル内のすべてのカメラ移動イベントが無視されます。再生終了後に反映されます。",
+        enabled: "有効",
+        disabled: "無効",
+      },
+      fullscreen: {
+        title: "フルスクリーンモード",
+        description: "クリックしてフルスクリーンモードに入り、もう一度クリックして終了します。",
+        enter: "フルスクリーンへ",
+        exit: "フルスクリーン終了",
+        notSupported: "お使いのブラウザはフルスクリーン機能に対応していません",
       },
       themePreview: {
         title: "テーマプレビュー",
