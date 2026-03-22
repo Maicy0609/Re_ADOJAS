@@ -160,8 +160,8 @@ export const translations = {
         worker: "Worker（后台线程）",
       },
       lockCamera: {
-        title: "Lock Camera (锁定镜头)",
-        description: "启用后镜头将强制锁定在当前行星触发的砖块上，使其居中显示，忽略关卡中所有摄像头移动事件。退出播放后生效。",
+        title: "锁定镜头",
+        description: "启用后镜头位置将强制锁定在当前砖块中心（保留缩放/旋转效果），忽略关卡中的摄像头位置移动事件。退出播放后生效。",
         enabled: "已启用",
         disabled: "已禁用",
       },
@@ -339,7 +339,7 @@ export const translations = {
       },
       lockCamera: {
         title: "Lock Camera",
-        description: "When enabled, camera is locked to the current tile center, ignoring all camera movement events in the level. Takes effect after exiting playback.",
+        description: "When enabled, camera position is locked to the current tile center (preserving zoom/rotation effects), ignoring camera position movement events in the level. Takes effect after exiting playback.",
         enabled: "Enabled",
         disabled: "Disabled",
       },
@@ -516,8 +516,8 @@ export const translations = {
         worker: "ワーカー（バックグラウンドスレッド）",
       },
       lockCamera: {
-        title: "Lock Camera (カメラロック)",
-        description: "有効にすると、カメラが現在のタイルの中心に強制ロックされ、レベル内のすべてのカメラ移動イベントが無視されます。再生終了後に反映されます。",
+        title: "カメラロック",
+        description: "有効にすると、カメラ位置が現在のタイルの中心に強制ロックされ（ズーム/回転効果は保持）、レベル内のカメラ位置移動イベントが無視されます。再生終了後に反映されます。",
         enabled: "有効",
         disabled: "無効",
       },
