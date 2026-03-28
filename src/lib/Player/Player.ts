@@ -23,6 +23,10 @@ export class Player implements IPlayer {
   private useWorker: boolean = true;
   private targetFramerate: TargetFramerateType = 'auto';
   private lockCameraEnabled: boolean = false; // Lock Camera: 强制锁定镜头到当前 Tile
+  private maxTileRenderLimit: number = 0; // 最大轨道渲染数，0表示无限制
+  private clearPreviousTile: boolean = false; // 当行星触发轨道时清除上一轨道渲染
+  private lastTriggeredTileIndex: number = -1; // 上一次触发的tile索引
+  private tileLimitActive: boolean = false; // 轨道限制是否激活（只在播放/暂停时生效）
   private animationId: number | null = null;
   private lastFrameTime: number = 0;
   private frameInterval: number = 0; // milliseconds between frames
@@ -675,6 +679,86 @@ export class Player implements IPlayer {
     this.lockCameraEnabled = enabled;
   }
 
+  public setMaxTileRenderLimit(limit: number): void {
+    this.maxTileRenderLimit = limit;
+    // 如果启用了限制，强制开启清除上一轨道功能
+    if (limit > 0) {
+      this.clearPreviousTile = true;
+    }
+    // 如果正在播放，立即应用设置
+    if (this.isPlaying && this.tileLimitActive) {
+      this.enforceTileLimit();
+    }
+  }
+
+  public setClearPreviousTile(enabled: boolean): void {
+    this.clearPreviousTile = enabled;
+  }
+
+  /**
+   * 应用轨道渲染限制设置（在开始播放时调用）
+   */
+  private applyTileLimitSettings(): void {
+    if (this.maxTileRenderLimit > 0) {
+      this.tileLimitActive = true;
+      this.clearPreviousTile = true;
+    } else if (this.clearPreviousTile) {
+      this.tileLimitActive = true;
+    } else {
+      this.tileLimitActive = false;
+    }
+    // 立即执行限制
+    this.enforceTileLimit();
+  }
+
+  /**
+   * 强制执行轨道渲染限制（滑动窗口模式）
+   * 清除已触发的旧tiles，确保当前可见tiles不超过限制
+   * 滑动窗口：只保留当前tile之后的tiles，总数不超过限制
+   */
+  private enforceTileLimit(): void {
+    if (!this.tileLimitActive || this.maxTileRenderLimit <= 0) return;
+    
+    const currentIdx = this.currentTileIndex;
+    const limit = this.maxTileRenderLimit;
+    
+    // 1. 清除当前tile之前的所有tiles（已被触发的）
+    if (this.clearPreviousTile) {
+      const toRemove: string[] = [];
+      this.visibleTiles.forEach(id => {
+        const idx = parseInt(id);
+        if (idx < currentIdx) {
+          toRemove.push(id);
+        }
+      });
+      toRemove.forEach(id => {
+        const mesh = this.tiles.get(id);
+        if (mesh) {
+          this.scene.remove(mesh);
+        }
+        this.visibleTiles.delete(id);
+      });
+    }
+    
+    // 2. 如果可见tiles超过限制，优先保留当前tile之后的tiles
+    //    删除索引最大的（最远的后续tiles）
+    if (this.visibleTiles.size > limit) {
+      const visibleArray = Array.from(this.visibleTiles).map(id => parseInt(id));
+      // 按索引降序排序（索引大的排在前面，优先删除）
+      visibleArray.sort((a, b) => b - a);
+      
+      const toRemoveCount = this.visibleTiles.size - limit;
+      for (let i = 0; i < toRemoveCount && i < visibleArray.length; i++) {
+        const id = visibleArray[i].toString();
+        const mesh = this.tiles.get(id);
+        if (mesh) {
+          this.scene.remove(mesh);
+        }
+        this.visibleTiles.delete(id);
+      }
+    }
+  }
+
   private updateFrameInterval(): void {
     if (this.targetFramerate === 'auto') {
       // Use monitor refresh rate (no limiting)
@@ -1092,6 +1176,10 @@ export class Player implements IPlayer {
     this.startTime = performance.now();
     this.elapsedTime = 0;
     this.currentTileIndex = 0;
+    this.lastTriggeredTileIndex = -1; // 重置上一触发tile索引
+    
+    // 应用轨道渲染限制设置
+    this.applyTileLimitSettings();
     
     this.createPlanets();
     
@@ -1179,6 +1267,8 @@ export class Player implements IPlayer {
   public stopPlay(): void {
     this.isPlaying = false;
     this.isPaused = false;
+    this.tileLimitActive = false; // 关闭轨道限制
+    
     this.removePlanets();
     
     if (this.music && (this.music as any).hasAudio ? this.music.hasAudio : false) {
@@ -1501,6 +1591,11 @@ export class Player implements IPlayer {
       }
     }
 
+    // 如果轨道限制激活，执行滑动窗口限制
+    if (this.tileLimitActive && this.maxTileRenderLimit > 0) {
+      this.enforceTileLimit();
+    }
+
     if (this.tiles.size > this.maxCachedTiles) {
         this.cleanupTileCache();
     }
@@ -1700,6 +1795,12 @@ export class Player implements IPlayer {
             }
         }
     }
+    
+    // 每帧执行轨道限制（滑动窗口模式）
+    if (this.tileLimitActive && this.maxTileRenderLimit > 0) {
+        this.enforceTileLimit();
+    }
+    this.lastTriggeredTileIndex = this.currentTileIndex;
     
     const tileIndex = this.currentTileIndex;
     

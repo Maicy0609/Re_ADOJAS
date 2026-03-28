@@ -88,6 +88,8 @@ export function useEditorState() {
       player.setTargetFramerate(settings.targetFramerate)
       player.setStatsPanel(settings.showStats)
       player.setLockCamera(settings.lockCamera ?? false)
+      player.setMaxTileRenderLimit(settings.maxTileRenderLimit ?? 0)
+      player.setClearPreviousTile(settings.clearPreviousTile ?? false)
       
       // Only set stats callback if not using stats.js
       if (!settings.showStats) {
@@ -135,6 +137,11 @@ export function useEditorState() {
     }
 
     if (playMode === "preview") {
+      // 从预览切换到播放时，先应用最新设置
+      if (previewerRef.current) {
+        previewerRef.current.setMaxTileRenderLimit(settings.maxTileRenderLimit ?? 0)
+        previewerRef.current.setClearPreviousTile(settings.clearPreviousTile ?? false)
+      }
       setPlayMode("play")
       setPlayModeActive(true)
       previewerRef.current?.startPlay()
@@ -145,7 +152,7 @@ export function useEditorState() {
       setPlayMode("play")
       previewerRef.current?.resumePlay()
     }
-  }, [adofaiFile, playMode, t])
+  }, [adofaiFile, playMode, t, settings])
 
   // 退出播放模式
   const handleExitPlayMode = useCallback((): void => {
@@ -252,6 +259,20 @@ export function useEditorState() {
     }
   }, [playMode, settings.lockCamera])
 
+  // 监听最大轨道渲染数设置变化
+  useEffect(() => {
+    if (previewerRef.current) {
+      previewerRef.current.setMaxTileRenderLimit(settings.maxTileRenderLimit ?? 0)
+    }
+  }, [settings.maxTileRenderLimit])
+
+  // 监听清除上一轨道设置变化
+  useEffect(() => {
+    if (previewerRef.current) {
+      previewerRef.current.setClearPreviousTile(settings.clearPreviousTile ?? false)
+    }
+  }, [settings.clearPreviousTile])
+
   // 键盘快捷键
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -302,6 +323,8 @@ export function useEditorState() {
             player.setTargetFramerate(settings.targetFramerate)
             player.setStatsPanel(settings.showStats)
             player.setLockCamera(settings.lockCamera ?? false)
+            player.setMaxTileRenderLimit(settings.maxTileRenderLimit ?? 0)
+            player.setClearPreviousTile(settings.clearPreviousTile ?? false)
             
             // Synthesize hitsounds
             await player.preSynthesizeHitsoundsWithProgress()
