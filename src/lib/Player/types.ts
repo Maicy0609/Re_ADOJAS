@@ -116,3 +116,31 @@ export interface ILevelData {
   decorations?: IDecorationEvent[];
   angleData?: number[];
 }
+
+/**
+ * Track animation type for floor appearance
+ */
+export enum TrackAnimationType {
+  None = 0,
+  Assemble = 1,
+  Assemble_Far = 2,
+  Extend = 3,
+  Grow = 4,
+  Grow_Spin = 5,
+  Fade = 6,
+  Drop = 7,
+  Rise = 8
+}
+
+/**
+ * Track animation type for floor disappearance
+ */
+export enum TrackAnimationType2 {
+  None = 0,
+  Scatter = 1,
+  Scatter_Far = 2,
+  Retract = 3,
+  Shrink = 4,
+  Shrink_Spin = 5,
+  Fade = 6
+}

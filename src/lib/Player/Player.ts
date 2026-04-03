@@ -1304,13 +1304,13 @@ export class Player implements IPlayer {
 
     this.updateCameraFollow(delta);
 
+    // Update MoveTrack animations BEFORE animated tiles so getTileOpacity() returns correct values
+    this.updateMoveTrack();
+
     this.updateAnimatedTiles();
 
     // Update decorations
     this.updateDecorations();
-
-    // Update MoveTrack animations
-    this.updateMoveTrack();
   }
   
   private updateDecorations(): void {
@@ -1923,7 +1923,9 @@ export class Player implements IPlayer {
         secondaryTrackColor: colors.bgcolor,
         trackColorPulse: event.trackColorPulse || settings.trackColorPulse || 'None',
         trackColorAnimDuration: event.trackColorAnimDuration || settings.trackColorAnimDuration || 2,
-        trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10
+        trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10,
+        trackColorAlpha: this.tileColorManager.extractAlpha(event.trackColor || defaultColor),
+        secondaryTrackColorAlpha: this.tileColorManager.extractAlpha(event.secondaryTrackColor || defaultSecondaryColor)
     };
 
     const minIdx = Math.max(0, Math.min(startIdx, endIdx));

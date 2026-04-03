@@ -34,6 +34,7 @@ export class PositionTrackManager {
     private levelData: any;
     private positionTrackEvents: Map<number, PositionTrackEvent[]>;
     private tileTransforms: TileTransform[];
+    private tilePositions: { [key: number]: { x: number; y: number } } = {};
     private _cachedIsEditorMode: boolean = false;
     private _cached: boolean = false;
 
@@ -43,6 +44,40 @@ export class PositionTrackManager {
         this.tileTransforms = [];
 
         this.parsePositionTrackEvents();
+    }
+
+    /**
+     * Convert relativeTo to absolute tile ID (matches ADOFAI IDFromTile logic)
+     * @param relativeTo The relativeTo value: [offset, relativeToType]
+     * @param thisTileId The current tile ID (floor where event occurs)
+     * @returns Absolute tile ID
+     */
+    private IDFromTile(relativeTo: [number, string], thisTileId: number): number {
+        const offset = relativeTo[0];
+        const relativeToType = relativeTo[1];
+        const totalTiles = this.levelData.tiles.length;
+
+        let result: number;
+
+        switch (relativeToType) {
+            case 'ThisTile':
+            case '0':
+                result = thisTileId + offset;
+                break;
+            case 'Start':
+            case '1':
+                result = offset;
+                break;
+            case 'End':
+            case '2':
+                result = totalTiles - 1 + offset;
+                break;
+            default:
+                result = thisTileId + offset;
+                break;
+        }
+
+        return Math.max(0, Math.min(result, totalTiles - 1));
     }
 
     /**
@@ -106,8 +141,11 @@ export class PositionTrackManager {
         const tiles = this.levelData.tiles;
         const angleData = this.levelData.angleData || [];
         const n = tiles.length;
+        const TILE_SIZE = 1.0;
         
         // Pre-allocate array
+        // Reset tile positions for relative calculations
+        this.tilePositions = {};
         const transforms: TileTransform[] = new Array(n);
         
         // Start from (0, 0) - plain objects instead of THREE.Vector2
@@ -128,13 +166,15 @@ export class PositionTrackManager {
             floats[i] = angleData[i] === 999 ? (angleData[i - 1] || 0) + 180 : angleData[i];
         }
 
-        console.log('[PositionTrackManager] Starting transform calculation, tiles:', n);
-
         for (let i = 0; i <= n; i++) {
             const isLastTile = i === n;
             const angle1 = isLastTile ? (floats[i - 1] || 0) : floats[i];
 
             if (!isLastTile) {
+                // Capture base tile position before processing events
+                const tileBasePosX = currentPosX;
+                const tileBasePosY = currentPosY;
+
                 // Current tile transform - plain numbers
                 let tileOffsetX = cumOffsetX;
                 let tileOffsetY = cumOffsetY;
@@ -153,8 +193,34 @@ export class PositionTrackManager {
 
                         // Apply position offset
                         if (event.positionOffset) {
-                            tileOffsetX += event.positionOffset[0];
-                            tileOffsetY += event.positionOffset[1];
+                            let offsetX = event.positionOffset[0] || 0;
+                            let offsetY = event.positionOffset[1] || 0;
+
+                            // Handle relativeTo
+                            if (event.relativeTo) {
+                                const targetTileId = this.IDFromTile(event.relativeTo, i);
+                                if (targetTileId !== i) {
+                                    const targetBasePos = this.tilePositions[targetTileId];
+                                    if (targetBasePos) {
+                                        const targetTransform = transforms[targetTileId];
+                                        const targetOffsetX = targetTransform ?
+                                            targetTransform.position.x - targetBasePos.x : 0;
+                                        const targetOffsetY = targetTransform ?
+                                            targetTransform.position.y - targetBasePos.y : 0;
+
+                                        // relativeOffset = targetBasePos + targetOffset - currentBasePos - currentOffset
+                                        const relativeOffsetX = targetBasePos.x + targetOffsetX - tileBasePosX - tileOffsetX;
+                                        const relativeOffsetY = targetBasePos.y + targetOffsetY - tileBasePosY - tileOffsetY;
+
+                                        tileOffsetX += relativeOffsetX;
+                                        tileOffsetY += relativeOffsetY;
+                                    }
+                                }
+                            }
+
+                            // Multiply by TILE_SIZE (matches ADOFAI)
+                            tileOffsetX += offsetX * TILE_SIZE;
+                            tileOffsetY += offsetY * TILE_SIZE;
                         }
 
                         // Apply rotation
@@ -201,6 +267,9 @@ export class PositionTrackManager {
                     opacity: tileOpacity,
                     stickToFloors: tileStickToFloors
                 };
+
+                // Store base tile position for relative calculations
+                this.tilePositions[i] = { x: tileBasePosX, y: tileBasePosY };
             }
 
             // Update position for next tile (based on angle)
@@ -209,7 +278,6 @@ export class PositionTrackManager {
             currentPosY += Math.sin(rad);
         }
 
-        console.log('[PositionTrackManager] Transform calculation complete, total:', transforms.length);
         this.tileTransforms = transforms;
         this._cached = true;
         return transforms;
@@ -235,6 +303,7 @@ export class PositionTrackManager {
     public dispose(): void {
         this.positionTrackEvents.clear();
         this.tileTransforms = [];
+        this.tilePositions = {};
         this._cached = false;
     }
 }

@@ -42,6 +42,7 @@ export interface DecorationConfig {
     rotation: number;
     rotationOffset: number;
     scale: [number, number];
+    pivotOffset: [number, number];
     
     // Visual effects
     parallax: [number, number];
@@ -82,6 +83,7 @@ export const defaultDecorationConfig: DecorationConfig = {
     rotation: 0,
     rotationOffset: 0,
     scale: [100, 100],
+    pivotOffset: [0, 0],
     parallax: [100, 100],
     parallaxOffset: [0, 0],
     depth: 0,

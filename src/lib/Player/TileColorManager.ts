@@ -27,13 +27,15 @@ export interface TileColorConfig {
     trackColorPulse: string;
     trackColorAnimDuration: number;
     trackPulseLength: number;
+    trackColorAlpha: number;  // Alpha channel for track color (0-1)
+    secondaryTrackColorAlpha: number;  // Alpha channel for secondary track color (0-1)
 }
 
 /**
  * Manager for tile colors and color events
  */
 export class TileColorManager {
-    private tileColors: { color: string, secondaryColor: string }[] = [];
+    private tileColors: { color: string, secondaryColor: string, shadowAlpha: number }[] = [];
     private tileRecolorConfigs: (TileColorConfig | null)[] = [];
     private levelData: any;
     private _useDefaultColors: boolean = false;
@@ -49,6 +51,8 @@ export class TileColorManager {
         trackColorPulse: 'None',
         trackColorAnimDuration: 2,
         trackPulseLength: 10,
+        trackColorAlpha: 1.0,
+        secondaryTrackColorAlpha: 1.0,
     };
     
     // Reusable Color objects to avoid GC pressure in animation loop
@@ -59,6 +63,21 @@ export class TileColorManager {
     
     constructor(levelData: any) {
         this.levelData = levelData;
+    }
+
+    /**
+     * Extract alpha channel from color string
+     * Supports #RRGGBBAA and #RGBA formats
+     */
+    public extractAlpha(colorStr: string): number {
+        if (!colorStr) return 1.0;
+        const hex = colorStr.replace('#', '');
+        if (hex.length === 8) {
+            return parseInt(hex.substring(6, 8), 16) / 255;
+        } else if (hex.length === 4) {
+            return parseInt(hex.substring(3, 4) + hex.substring(3, 4), 16) / 255;
+        }
+        return 1.0;
     }
     
     /**
@@ -87,6 +106,8 @@ export class TileColorManager {
                 trackColorPulse: settings.trackColorPulse || 'None',
                 trackColorAnimDuration: settings.trackColorAnimDuration || 2,
                 trackPulseLength: settings.trackPulseLength || 10,
+                trackColorAlpha: this.extractAlpha(settings.trackColor || 'debb7b'),
+                secondaryTrackColorAlpha: this.extractAlpha(settings.secondaryTrackColor || 'ffffff'),
             };
             // Compute proper rendered colors (border = darker variant for Standard style)
             const rendered = this.getTileRenderer(0, 0, TileColorManager._defaultConfig);
@@ -112,7 +133,9 @@ export class TileColorManager {
             secondaryTrackColor: defaultSecondaryColor,  // Use original colors
             trackColorPulse: settings.trackColorPulse || 'None',
             trackColorAnimDuration: settings.trackColorAnimDuration || 2,
-            trackPulseLength: settings.trackPulseLength || 10
+            trackPulseLength: settings.trackPulseLength || 10,
+            trackColorAlpha: this.extractAlpha(defaultColor),
+            secondaryTrackColorAlpha: this.extractAlpha(defaultSecondaryColor)
         };
 
         // Optimization: Sort non-justThisTile events to process in one pass (O(N + E log E))
@@ -138,18 +161,20 @@ export class TileColorManager {
                 currentConfig = {
                     trackStyle: eventTrackStyle,
                     trackColorType: event.trackColorType || defaultColorType,
-                    trackColor: event.trackColor || defaultColor,  // Use original colors
-                    secondaryTrackColor: event.secondaryTrackColor || defaultSecondaryColor,  // Use original colors
+                    trackColor: event.trackColor || defaultColor,
+                    secondaryTrackColor: event.secondaryTrackColor || defaultSecondaryColor,
                     trackColorPulse: event.trackColorPulse || settings.trackColorPulse || 'None',
                     trackColorAnimDuration: event.trackColorAnimDuration || settings.trackColorAnimDuration || 2,
-                    trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10
+                    trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10,
+                    trackColorAlpha: this.extractAlpha(event.trackColor || defaultColor),
+                    secondaryTrackColorAlpha: this.extractAlpha(event.secondaryTrackColor || defaultSecondaryColor)
                 };
                 currentEventIdx++;
             }
 
             this.tileRecolorConfigs[i] = currentConfig;
             const rendered = this.getTileRenderer(i, 0, currentConfig);
-            this.tileColors[i] = { color: rendered.color, secondaryColor: rendered.bgcolor };
+            this.tileColors[i] = { color: rendered.color, secondaryColor: rendered.bgcolor, shadowAlpha: rendered.shadowAlpha };
         }
 
         // Handle justThisTile events (Static Preview Logic) separately as O(1)
@@ -161,16 +186,18 @@ export class TileColorManager {
                         const config: TileColorConfig = {
                             trackStyle: event.trackStyle || defaultStyle,
                             trackColorType: event.trackColorType || defaultColorType,
-                            trackColor: event.trackColor || defaultColor,  // Use original colors
-                            secondaryTrackColor: event.secondaryTrackColor || defaultSecondaryColor,  // Use original colors
+                            trackColor: event.trackColor || defaultColor,
+                            secondaryTrackColor: event.secondaryTrackColor || defaultSecondaryColor,
                             trackColorPulse: event.trackColorPulse || settings.trackColorPulse || 'None',
                             trackColorAnimDuration: event.trackColorAnimDuration || settings.trackColorAnimDuration || 2,
-                            trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10
+                            trackPulseLength: event.trackPulseLength || settings.trackPulseLength || 10,
+                            trackColorAlpha: this.extractAlpha(event.trackColor || defaultColor),
+                            secondaryTrackColorAlpha: this.extractAlpha(event.secondaryTrackColor || defaultSecondaryColor)
                         };
 
                         this.tileRecolorConfigs[floor] = config;
                         const rendered = this.getTileRenderer(floor, 0, config);
-                        this.tileColors[floor] = { color: rendered.color, secondaryColor: rendered.bgcolor };
+                        this.tileColors[floor] = { color: rendered.color, secondaryColor: rendered.bgcolor, shadowAlpha: rendered.shadowAlpha };
                     }
                 }
             });
@@ -185,9 +212,9 @@ export class TileColorManager {
         return this.tileRecolorConfigs;
     }
     
-    public getTileColor(index: number): { color: string, secondaryColor: string } | undefined {
+    public getTileColor(index: number): { color: string, secondaryColor: string, shadowAlpha?: number } | undefined {
         if (this._useDefaultColors) {
-            return { color: TileColorManager._defaultColor, secondaryColor: TileColorManager._defaultSecondaryColor };
+            return { color: TileColorManager._defaultColor, secondaryColor: TileColorManager._defaultSecondaryColor, shadowAlpha: 1.0 };
         }
         return this.tileColors[index];
     }
@@ -199,9 +226,9 @@ export class TileColorManager {
         return this.tileRecolorConfigs[index];
     }
     
-    public setTileColor(index: number, color: string, bgcolor: string): void {
+    public setTileColor(index: number, color: string, bgcolor: string, shadowAlpha: number = 1.0): void {
         if (index >= 0 && index < this.tileColors.length) {
-            this.tileColors[index] = { color, secondaryColor: bgcolor };
+            this.tileColors[index] = { color, secondaryColor: bgcolor, shadowAlpha };
         }
     }
     
@@ -299,7 +326,7 @@ export class TileColorManager {
     /**
      * Core tile color renderer based on trackColorType
      */
-    public getTileRenderer(id: number, time: number, rct: TileColorConfig, amplitude?: number): { color: string, bgcolor: string } {
+    public getTileRenderer(id: number, time: number, rct: TileColorConfig, amplitude?: number, moveTrackOpacity: number = 1.0): { color: string, bgcolor: string, alpha: number, shadowAlpha: number } {
         const {
             trackColorType, trackColor, secondaryTrackColor,
             trackColorPulse, trackColorAnimDuration, trackPulseLength,
@@ -457,7 +484,19 @@ export class TileColorManager {
             shouldDraw = 1;
         }
 
-        return renderer_tileClientColor;
+        // Calculate shadow color and alpha based on trackStyle (matches ADOFAI SetTrackStyle logic)
+        let shadowAlpha = 0.45;
+        if (isNeon || isNeonLight) {
+            shadowAlpha = 0.35;
+        } else if (trackStyle === 'Basic' || trackStyle === 'Minimal') {
+            shadowAlpha = 0.0;
+        }
+
+        // Calculate final alpha: combine color alpha with MoveTrack opacity
+        let finalAlpha = (rct.trackColorAlpha || 1.0) * moveTrackOpacity;
+        finalAlpha = Math.max(0.1, finalAlpha); // Minimum 0.1 alpha to keep tiles visible
+
+        return { ...renderer_tileClientColor, alpha: finalAlpha, shadowAlpha };
     }
 
     /**

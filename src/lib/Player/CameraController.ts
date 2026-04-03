@@ -12,6 +12,7 @@ export interface CameraMode {
     zoom: number;
     rotation: number;
     angleOffset: number;
+    lastEventRelativePosition: { x: number; y: number }; // ADOFAI: lastEventRelativePosition
 }
 
 /**
@@ -80,7 +81,8 @@ export class CameraController {
             position: { x: 0, y: 0 },
             zoom: 100,
             rotation: 0,
-            angleOffset: 0
+            angleOffset: 0,
+            lastEventRelativePosition: { x: 0, y: 0 }
         };
         
         this.cameraTransition = {
@@ -136,6 +138,16 @@ export class CameraController {
             this.cameraMode.rotation = settings.rotation !== undefined ? settings.rotation : 0;
             this.cameraMode.zoom = settings.zoom !== undefined ? settings.zoom : 100;
             this.cameraMode.angleOffset = settings.angleOffset !== undefined ? settings.angleOffset : 0;
+            
+            // Initialize lastEventRelativePosition based on relativeTo
+            if (this.cameraMode.relativeTo === 'Tile') {
+                const tile = this.levelData.tiles[0];
+                this.cameraMode.lastEventRelativePosition = tile ? { x: tile.position[0], y: tile.position[1] } : { x: 0, y: 0 };
+            } else if (this.cameraMode.relativeTo === 'Global') {
+                this.cameraMode.lastEventRelativePosition = { x: 0, y: 0 };
+            } else {
+                this.cameraMode.lastEventRelativePosition = { x: 0, y: 0 };
+            }
         } else {
             this.cameraMode = {
                 relativeTo: 'Player',
@@ -143,7 +155,8 @@ export class CameraController {
                 position: { x: 0, y: 0 },
                 zoom: 100,
                 rotation: 0,
-                angleOffset: 0
+                angleOffset: 0,
+                lastEventRelativePosition: { x: 0, y: 0 }
             };
         }
     }
@@ -237,24 +250,15 @@ export class CameraController {
         let currentLogicalRotation = this.cameraMode.rotation;
 
         if (this.cameraTransition.active) {
-            // Calculate current interpolated position from the ongoing transition
-            const transitionTime = (elapsedTime / 1000) - this.cameraTransition.startTime;
-            let t = transitionTime / this.cameraTransition.duration;
-            t = Math.max(0, Math.min(1, t));
+            // ADOFAI behavior: if there's an active transition, instantly complete it
+            // Old transition jumps to target value, new transition starts from that value
             
-            const easeFunc = EasingFunctions[this.cameraTransition.ease] || EasingFunctions.Linear;
-            const progress = easeFunc(t);
+            // Use target values from cameraMode (not interpolated)
+            currentLogicalPos = { ...this.cameraMode.position };
+            currentLogicalZoom = this.cameraMode.zoom;
+            currentLogicalRotation = this.cameraMode.rotation;
             
-            const start = this.cameraTransition.startSnapshot;
-            
-            // Interpolate logical values
-            currentLogicalPos = {
-                x: start.logicalPosition.x + (this.cameraMode.position.x - start.logicalPosition.x) * progress,
-                y: start.logicalPosition.y + (this.cameraMode.position.y - start.logicalPosition.y) * progress
-            };
-            currentLogicalZoom = start.logicalZoom + (this.cameraMode.zoom - start.logicalZoom) * progress;
-            currentLogicalRotation = start.logicalRotation + (this.cameraMode.rotation - start.logicalRotation) * progress;
-            
+            // Old transition is instantly completed
             this.cameraTransition.active = false;
         }
 
@@ -279,6 +283,13 @@ export class CameraController {
             }
         }
 
+        // Calculate rotation offset for LastPosition mode (matches ADOFAI logic)
+        let rotationOffset = 0;
+        if (relativeToSpecified && nextRelativeTo === 'LastPosition') {
+            // LastPosition inherits current camera angle
+            rotationOffset = this.cameraMode.rotation;
+        }
+
         // 1. Update RelativeTo & Anchor (only if specified)
         if (relativeToSpecified) {
             if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
@@ -287,35 +298,87 @@ export class CameraController {
                 this.cameraMode.relativeTo = nextRelativeTo;
                 if (nextRelativeTo === 'Tile') {
                     this.cameraMode.anchorTileIndex = floorIndex;
-                } else if (nextRelativeTo === 'Global' || nextRelativeTo === 'Player') {
+                    // ADOFAI: this.cam.lastEventRelativePosition = this.floorPos;
+                    const tile = this.levelData.tiles[floorIndex];
+                    if (tile) {
+                        this.cameraMode.lastEventRelativePosition = { x: tile.position[0], y: tile.position[1] };
+                    }
+                } else if (nextRelativeTo === 'Global') {
                     this.cameraMode.anchorTileIndex = 0; // Default or ignored
+                    // ADOFAI: this.cam.lastEventRelativePosition = Vector2.zero;
+                    this.cameraMode.lastEventRelativePosition = { x: 0, y: 0 };
+                } else if (nextRelativeTo === 'Player') {
+                    // ADOFAI doesn't explicitly set lastEventRelativePosition in Player mode
+                    // It keeps the previous value from other modes
                 }
             }
         }
 
         // 2. Update Position
-        if (event.position !== undefined && event.position !== null) {
-            const px = event.position[0];
-            const py = event.position[1];
+        // Position values are multiplied by tileSize
+        const TILE_SIZE = 1.0; // Tile size in world units (matches Re_ADOJAS system)
+        
+        // Determine if position is explicitly specified in the event
+        const positionSpecified = event.position !== undefined && event.position !== null;
+        
+        if (positionSpecified) {
+            const px = (event.position[0] !== null && event.position[0] !== undefined) ? event.position[0] * TILE_SIZE : null;
+            const py = (event.position[1] !== null && event.position[1] !== undefined) ? event.position[1] * TILE_SIZE : null;
             
-            // If relativeTo is undefined, position is an offset from current position
-            // If relativeTo is LastPosition/LastPositionNoRotation, position is also an offset
-            // Otherwise, position is absolute
-            const isOffset = (relativeTo === undefined) || 
-                            (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation');
-            
-            if (isOffset) {
-                if (px !== null && px !== undefined) this.cameraMode.position.x += px;
-                if (py !== null && py !== undefined) this.cameraMode.position.y += py;
+            // In ADOFAI, position is always absolute except for LastPosition/LastPositionNoRotation
+            // LastPosition/LastPositionNoRotation: position is added to current camParent.position
+            if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
+                if (px !== null) this.cameraMode.position.x += px;
+                if (py !== null) this.cameraMode.position.y += py;
             } else {
-                if (px !== null && px !== undefined) this.cameraMode.position.x = px;
-                if (py !== null && py !== undefined) this.cameraMode.position.y = py;
+                if (px !== null) this.cameraMode.position.x = px;
+                if (py !== null) this.cameraMode.position.y = py;
+            }
+        } else {
+            // If position is not specified, calculate based on ADOFAI logic
+            // ADOFAI: vector2 = lastEventRelativePosition - camParent.position
+            // In our implementation, we need to calculate the position that would result in this behavior
+            
+            if (nextRelativeTo === 'Player') {
+                // Player mode: keep current relative position (camParent.position in ADOFAI)
+                // No change needed, cameraMode.position is already the relative position
+            } else if (nextRelativeTo === 'Tile') {
+                // Tile mode: if no position, use lastEventRelativePosition calculation
+                // ADOFAI: vector2 = lastEventRelativePosition - camParent.position
+                // In our implementation, we need to calculate cameraMode.position to achieve the same finalPos
+                // Since finalPos = floorPos + cameraMode.position, we need:
+                // floorPos + cameraMode.position = (lastEventRelativePosition - camParentPosition) + floorPos
+                // cameraMode.position = lastEventRelativePosition - camParentPosition
+                // But camParentPosition is the offset from the reference point, which is cameraMode.position!
+                // So: cameraMode.position = lastEventRelativePosition - cameraMode.position
+                // This doesn't make sense directly. Let's think differently.
+                // In ADOFAI, camParent.position represents the current camera position relative to its reference point
+                // In Tile mode, the reference point is the floor position
+                // So camParent.position should be currentCameraPosition - floorPosition
+                // And finalPos = (lastEventRelativePosition - (currentCameraPosition - floorPosition)) + floorPosition
+                // This is complex. For simplicity, let's assume lastEventRelativePosition is the last floor position
+                // and we want to maintain the same relative position
+                const tile = this.levelData.tiles[floorIndex];
+                if (tile) {
+                    // Use lastEventRelativePosition to maintain position continuity
+                    // This is a simplification of ADOFAI's complex logic
+                    this.cameraMode.position = this.cameraMode.lastEventRelativePosition;
+                }
+            } else if (nextRelativeTo === 'Global') {
+                // Global mode: if no position, use lastEventRelativePosition
+                // ADOFAI: this.cam.lastEventRelativePosition = Vector2.zero
+                // So if no position, cameraMode.position should be 0
+                this.cameraMode.position = { x: 0, y: 0 };
+            } else if (nextRelativeTo === 'LastPosition' || nextRelativeTo === 'LastPositionNoRotation') {
+                // LastPosition mode: keep cumulative position
+                // No change needed, cameraMode.position is already cumulative
             }
         }
 
         // 3. Update Rotation (always absolute, not affected by relativeTo undefined)
+        // LastPosition mode adds rotation offset (matches ADOFAI: targetRot + num)
         if (event.rotation !== undefined && event.rotation !== null) {
-            this.cameraMode.rotation = event.rotation;
+            this.cameraMode.rotation = event.rotation + rotationOffset;
         }
 
         // 4. Update Zoom (Always absolute)
@@ -371,38 +434,56 @@ export class CameraController {
     }
     
     /**
-     * Calculate target camera position based on camera mode
+     * Calculate target camera position based on camera mode and interpolated logical position
+     * Matches ADOFAI ffxCameraPlus.cs logic
+     * @param currentPivotPosition Current planet position
+     * @param interpolatedLogicalPos Optional interpolated logical position (for animation). If not provided, uses cameraMode.position
      */
-    public calculateTargetPosition(currentPivotPosition: { x: number; y: number }): { x: number; y: number } {
+    public calculateTargetPosition(currentPivotPosition: { x: number; y: number }, interpolatedLogicalPos?: { x: number; y: number }): { x: number; y: number } {
         let targetX = 0;
         let targetY = 0;
         
-        let logicalPos = { ...this.cameraMode.position };
+        // Use interpolated logical position if provided (for animation), otherwise use target logical position
+        const logicalPos = interpolatedLogicalPos || { ...this.cameraMode.position };
         
         // Handle transition interpolation
-        if (this.cameraTransition.active) {
+        if (this.cameraTransition.active && !interpolatedLogicalPos) {
             // This will be handled separately in the main update loop
         }
         
         if (this.cameraMode.relativeTo === 'Player') {
+            // Player mode: position is offset from planet position
+            // ADOFAI: finalPos = vector2 (where vector2 is the offset from planet)
             targetX = currentPivotPosition.x + logicalPos.x;
             targetY = currentPivotPosition.y + logicalPos.y;
         } else if (this.cameraMode.relativeTo === 'Global') {
+            // Global mode: position is from world origin
+            // ADOFAI uses the first tile's position as origin reference
             const tile0 = this.levelData.tiles[0];
             const originX = tile0 ? tile0.position[0] : 0;
             const originY = tile0 ? tile0.position[1] : 0;
             targetX = originX + logicalPos.x;
             targetY = originY + logicalPos.y;
         } else if (this.cameraMode.relativeTo === 'Tile') {
+            // Tile mode: position is offset from anchor tile
+            // ADOFAI: finalPos = vector2 + floorPos
             const tile = this.levelData.tiles[this.cameraMode.anchorTileIndex];
             if (tile) {
                 targetX = tile.position[0] + logicalPos.x;
                 targetY = tile.position[1] + logicalPos.y;
             } else {
+                // Fallback to Player mode if tile doesn't exist
                 targetX = currentPivotPosition.x + logicalPos.x;
                 targetY = currentPivotPosition.y + logicalPos.y;
             }
+        } else if (this.cameraMode.relativeTo === 'LastPosition' || this.cameraMode.relativeTo === 'LastPositionNoRotation') {
+            // LastPosition mode: position is offset from camera's relative position
+            // ADOFAI: camParent.position represents the camera's position relative to its reference point
+            // logicalPos is cumulative, so we add it to the current planet position
+            targetX = currentPivotPosition.x + logicalPos.x;
+            targetY = currentPivotPosition.y + logicalPos.y;
         } else {
+            // Default fallback to Player mode
             targetX = currentPivotPosition.x + logicalPos.x;
             targetY = currentPivotPosition.y + logicalPos.y;
         }

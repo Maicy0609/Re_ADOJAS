@@ -183,7 +183,13 @@ const createTrackMesh = (
         return createGemsMesh(startAngle, endAngle, length, width, outline);
     }
 
-    return createTileMesh(startAngle, endAngle, length, width, outline);
+    // For Minimal track style, reduce length by 0.03 (matches ADOFAI SetTrackStyle logic)
+    let adjustedLength = length;
+    if (trackStyle === "Minimal") {
+        adjustedLength -= 0.03;
+    }
+
+    return createTileMesh(startAngle, endAngle, adjustedLength, width, outline);
 };
 
 const createMidSpinMesh = (

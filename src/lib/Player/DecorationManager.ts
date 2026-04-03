@@ -182,12 +182,14 @@ export class DecorationManager {
         
         // Parse AddDecoration events from decorations array (if exists at root level)
         const rootDecorations = this.levelData.decorations || (this.levelData as any).__decorations;
+        let decorationCount = 0;
+        
         if (rootDecorations && Array.isArray(rootDecorations)) {
-            rootDecorations.forEach((dec: any, index: number) => {
+            rootDecorations.forEach((dec: any) => {
                 if (dec.eventType === 'AddDecoration') {
-                    this.createDecoration(dec, index);
+                    this.createDecoration(dec, decorationCount++);
                 } else if (dec.eventType === 'AddText') {
-                    this.createTextDecoration(dec, index);
+                    this.createTextDecoration(dec, decorationCount++);
                 }
             });
         }
@@ -195,16 +197,15 @@ export class DecorationManager {
         // Parse AddDecoration events from tiles.addDecorations (ADOFAI format)
         const tiles = this.levelData.tiles;
         if (tiles && Array.isArray(tiles)) {
-            let decoIndex = this.decorations.size;
             tiles.forEach((tile: any, tileIndex: number) => {
                 if (tile.addDecorations && Array.isArray(tile.addDecorations)) {
                     tile.addDecorations.forEach((dec: any) => {
                         // Add floor property if not present
                         const decWithFloor = { ...dec, floor: dec.floor ?? tileIndex };
                         if (dec.eventType === 'AddDecoration') {
-                            this.createDecoration(decWithFloor, decoIndex++);
+                            this.createDecoration(decWithFloor, decorationCount++);
                         } else if (dec.eventType === 'AddText') {
-                            this.createTextDecoration(decWithFloor, decoIndex++);
+                            this.createTextDecoration(decWithFloor, decorationCount++);
                         }
                     });
                 }
@@ -392,7 +393,8 @@ export class DecorationManager {
     
     /**
      * Load decoration texture (uses preloaded textures)
-     * Returns true if texture is available (loaded or loading), false if not found
+     * Returns true if texture is immediately available (in cache), false if not found or still loading
+     * Decoration should NOT be created until texture is actually loaded
      */
     private loadDecorationTexture(filename: string, decoration: Decoration): boolean {
         // Check texture cache first (should be preloaded)
@@ -410,47 +412,47 @@ export class DecorationManager {
                 const texture = this.textureCache.get(filename);
                 if (texture) {
                     decoration.setupVisual(texture);
+                } else {
+                    // Failed load: dispose and delete from map
+                    decoration.dispose();
+                    this.decorations.delete(decoration.config.id!);
                 }
             });
-            // Texture is loading, allow decoration creation
-            return true;
+            // Texture is loading, but we don't create decoration until it's loaded
+            // Return false to indicate texture is not yet available
+            return false;
         }
 
-        // No image found, do not create decoration
+        // No image found at all, do not create decoration
         console.log(`[DecorationManager] No texture found for '${filename}', skipping decoration creation`);
         return false;
     }
     
     /**
      * Get or create cached placeholder texture
+     * Creates a 64x64 red circle on white background
      */
     private getPlaceholderTexture(): THREE.Texture {
         if (!this.placeholderTexture) {
-            this.placeholderTexture = this.createPlaceholderTexture();
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d')!;
+            
+            // White background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 64, 64);
+            
+            // Red circle
+            ctx.fillStyle = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(32, 32, 20, 0, Math.PI * 2);
+            ctx.fill();
+            
+            this.placeholderTexture = new THREE.CanvasTexture(canvas);
+            this.placeholderTexture.colorSpace = THREE.SRGBColorSpace;
         }
         return this.placeholderTexture;
-    }
-    
-    /**
-     * Create a placeholder texture
-     */
-    private createPlaceholderTexture(): THREE.Texture {
-        const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
-        const ctx = canvas.getContext('2d')!;
-        
-        // Checkerboard pattern
-        const size = 8;
-        for (let y = 0; y < 64; y += size) {
-            for (let x = 0; x < 64; x += size) {
-                ctx.fillStyle = ((x + y) / size) % 2 === 0 ? '#ff00ff' : '#000000';
-                ctx.fillRect(x, y, size, size);
-            }
-        }
-        
-        const texture = new THREE.CanvasTexture(canvas);
-        return texture;
     }
     
     /**
@@ -670,7 +672,9 @@ export class DecorationManager {
                 }
 
                 if (event.scale !== undefined) {
-                    targetValues.scale = this.parseVector2(event.scale, [100, 100]);
+                    const scale = this.parseVector2(event.scale, [100, 100]);
+                    // ADOFAI: this.targetScaleV2 = (Vector2)evnt.data["scale"] / 100f
+                    targetValues.scale = [scale[0] / 100, scale[1] / 100];
                 }
 
                 if (event.color !== undefined) {
@@ -678,16 +682,25 @@ export class DecorationManager {
                 }
 
                 if (event.opacity !== undefined) {
-                    targetValues.opacity = event.opacity;
+                    // ADOFAI: this.targetOpacity = evnt.GetFloat("opacity") / 100f
+                    targetValues.opacity = event.opacity / 100;
                 }
 
                 if (event.parallax !== undefined) {
-                    targetValues.parallax = this.parseVector2(event.parallax, [100, 100]);
+                    const parallax = this.parseVector2(event.parallax, [100, 100]);
+                    // ADOFAI: dec.parallax.multiplier = this.targetParallax / 100f
+                    targetValues.parallax = [parallax[0] / 100, parallax[1] / 100];
                 }
 
                 if (event.parallaxOffset !== undefined) {
                     const po = this.parseVector2(event.parallaxOffset, [0, 0]);
                     targetValues.parallaxOffset = [po[0] * this.tileSize, po[1] * this.tileSize];
+                }
+
+                if (event.pivotOffset !== undefined) {
+                    const piv = this.parseVector2(event.pivotOffset, [0, 0]);
+                    // ADOFAI: this.targetPivot = tileSize * vector3
+                    targetValues.pivotOffset = [piv[0] * this.tileSize, piv[1] * this.tileSize];
                 }
 
                 if (event.depth !== undefined) {
