@@ -41,6 +41,8 @@ export interface IMusic {
   readonly hasAudio: boolean;
   readonly amplitude: number;
   dispose(): void;
+  playScheduled?(when: number, offset?: number): void;
+  audio?: HTMLAudioElement;
 }
 
 export interface IPlanet {
@@ -112,4 +114,5 @@ export interface ILevelData {
   tiles: any[];
   actions?: any[];
   decorations?: IDecorationEvent[];
+  angleData?: number[];
 }

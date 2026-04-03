@@ -36,17 +36,64 @@ export class TileColorManager {
     private tileColors: { color: string, secondaryColor: string }[] = [];
     private tileRecolorConfigs: (TileColorConfig | null)[] = [];
     private levelData: any;
+    private _useDefaultColors: boolean = false;
+    
+    // Default color constants
+    private static _defaultColor = '#debb7b';
+    private static _defaultSecondaryColor = '#ffffff';
+    private static _defaultConfig: TileColorConfig = {
+        trackStyle: 'Standard',
+        trackColorType: 'Single',
+        trackColor: '#debb7b',
+        secondaryTrackColor: '#ffffff',
+        trackColorPulse: 'None',
+        trackColorAnimDuration: 2,
+        trackPulseLength: 10,
+    };
+    
+    // Reusable Color objects to avoid GC pressure in animation loop
+    private static _reusableColor = new THREE.Color();
+    private static _reusableColor2 = new THREE.Color();
+    private static _reusableLighter = new THREE.Color();
+    private static _reusableDarker = new THREE.Color();
     
     constructor(levelData: any) {
         this.levelData = levelData;
     }
     
     /**
+     * Set default color mode - skip per-tile color allocation
+     * Use this for very large levels to save memory
+     */
+    public setUseDefaultColors(use: boolean): void {
+        this._useDefaultColors = use;
+    }
+
+    /**
      * Initialize tile colors from level settings
      */
     public initTileColors(): void {
         const totalTiles = this.levelData.tiles.length;
         const settings = this.levelData.settings;
+        
+        // For very large levels, skip per-tile allocation entirely
+        if (this._useDefaultColors || totalTiles > 500000) {
+            this._useDefaultColors = true;
+            TileColorManager._defaultConfig = {
+                trackStyle: settings.trackStyle || 'Standard',
+                trackColorType: settings.trackColorType || 'Single',
+                trackColor: settings.trackColor || 'debb7b',
+                secondaryTrackColor: settings.secondaryTrackColor || 'ffffff',
+                trackColorPulse: settings.trackColorPulse || 'None',
+                trackColorAnimDuration: settings.trackColorAnimDuration || 2,
+                trackPulseLength: settings.trackPulseLength || 10,
+            };
+            // Compute proper rendered colors (border = darker variant for Standard style)
+            const rendered = this.getTileRenderer(0, 0, TileColorManager._defaultConfig);
+            TileColorManager._defaultColor = rendered.color;
+            TileColorManager._defaultSecondaryColor = rendered.bgcolor;
+            return;
+        }
         
         // Global defaults
         const defaultColor = settings.trackColor || 'debb7b';
@@ -139,10 +186,16 @@ export class TileColorManager {
     }
     
     public getTileColor(index: number): { color: string, secondaryColor: string } | undefined {
+        if (this._useDefaultColors) {
+            return { color: TileColorManager._defaultColor, secondaryColor: TileColorManager._defaultSecondaryColor };
+        }
         return this.tileColors[index];
     }
     
     public getTileRecolorConfig(index: number): TileColorConfig | null {
+        if (this._useDefaultColors) {
+            return TileColorManager._defaultConfig;
+        }
         return this.tileRecolorConfigs[index];
     }
     
@@ -362,8 +415,7 @@ export class TileColorManager {
         // F. Rainbow - HSV rainbow animation
         else if (trackColorType === "Rainbow") {
             const hue = (effectiveTime / trackColorAnimDuration) % 1;
-            const color = new THREE.Color().setHSL(hue, 0.8, 0.6);
-            const rainbowHex = '#' + color.getHexString();
+            const rainbowHex = '#' + TileColorManager._reusableColor.setHSL(hue, 0.8, 0.6).getHexString();
 
             if (isNeon) {
                 renderer_tileClientColor.color = "#000000";
@@ -383,12 +435,10 @@ export class TileColorManager {
             const amp = amplitude || 0;
             // Volume modulates lightness
             const baseColor = isNeon ? secondaryTrackColor : trackColor;
-            const color = new THREE.Color(baseColor);
             const hsl = { h: 0, s: 0, l: 0 };
-            color.getHSL(hsl);
+            TileColorManager._reusableColor.set(baseColor).getHSL(hsl);
             // Lightness goes from 0.2 to 0.8 based on amplitude
-            color.setHSL(hsl.h, hsl.s, 0.2 + amp * 0.6);
-            const volumeHex = '#' + color.getHexString();
+            const volumeHex = '#' + TileColorManager._reusableColor.setHSL(hsl.h, hsl.s, 0.2 + amp * 0.6).getHexString();
 
             if (isNeon) {
                 renderer_tileClientColor.color = "#000000";
@@ -417,9 +467,9 @@ export class TileColorManager {
     public genColor(c1: string, c2: string, t: number): string {
         const alpha = Math.max(0, Math.min(1, t));
 
-        // Convert to RGB
-        const color1 = new THREE.Color(c1);
-        const color2 = new THREE.Color(c2);
+        // Convert to RGB (reuse static objects)
+        const color1 = TileColorManager._reusableColor.set(c1);
+        const color2 = TileColorManager._reusableColor2.set(c2);
 
         // Apply gamma correction for smoother blending
         const gamma = 2.2;
@@ -438,8 +488,11 @@ export class TileColorManager {
         const g = Math.pow(g1 + (g2 - g1) * alpha, invGamma);
         const b = Math.pow(b1 + (b2 - b1) * alpha, invGamma);
 
-        const result = new THREE.Color(r, g, b);
-        return '#' + result.getHexString();
+        // Build hex string directly without creating a new Color object
+        const ri = (Math.min(255, Math.max(0, (r * 255) | 0)));
+        const gi = (Math.min(255, Math.max(0, (g * 255) | 0)));
+        const bi = (Math.min(255, Math.max(0, (b * 255) | 0)));
+        return '#' + ((1 << 24) + (ri << 16) + (gi << 8) + bi).toString(16).slice(1);
     }
 
     /**
@@ -447,19 +500,17 @@ export class TileColorManager {
      * Matches ADOFAI original color processing logic
      */
     public processHexColor(hex: string): [string, string] {
-        let color = new THREE.Color(hex);
+        const color = TileColorManager._reusableColor.set(hex);
 
         // Generate lighter variant (for NeonLight borders)
-        const lighter = new THREE.Color();
-        lighter.copy(color);
+        const lighter = TileColorManager._reusableLighter.copy(color);
         lighter.multiplyScalar(1.3); // 30% brighter
         lighter.r = Math.min(1, lighter.r);
         lighter.g = Math.min(1, lighter.g);
         lighter.b = Math.min(1, lighter.b);
 
         // Generate darker variant (for Standard borders)
-        const darker = new THREE.Color();
-        darker.copy(color);
+        const darker = TileColorManager._reusableDarker.copy(color);
         darker.multiplyScalar(0.5); // 50% darker
 
         return [

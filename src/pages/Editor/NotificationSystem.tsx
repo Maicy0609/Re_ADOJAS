@@ -11,7 +11,7 @@ declare global {
 }
 
 // 通知系统组件
-export function NotificationSystem(): JSX.Element {
+export function NotificationSystem(): JSX.Element | null {
   useEffect(() => {
     // 初始化notyf
     const notyf = new Notyf({

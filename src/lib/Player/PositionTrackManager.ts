@@ -1,5 +1,3 @@
-import * as THREE from 'three';
-
 /**
  * PositionTrack event interface
  */
@@ -15,12 +13,12 @@ export interface PositionTrackEvent {
 }
 
 /**
- * Tile transform result
+ * Tile transform result - uses plain objects instead of THREE.Vector3 for memory efficiency
  */
 export interface TileTransform {
-    position: THREE.Vector3;
+    position: { x: number; y: number; z: number };
     rotation: number;
-    scale: THREE.Vector3;
+    scale: number;
     opacity: number;
     stickToFloors: boolean;
 }
@@ -28,16 +26,21 @@ export interface TileTransform {
 /**
  * Manages PositionTrack events - using ADOFAI-Src's cumulative logic
  * Implements our own tile position calculation based on ADOFAI-JS structure
+ * 
+ * Memory optimization: Uses plain objects instead of THREE.Vector3/Vector2,
+ * and Array instead of Map to minimize per-tile overhead.
  */
 export class PositionTrackManager {
     private levelData: any;
     private positionTrackEvents: Map<number, PositionTrackEvent[]>;
-    private tileTransforms: Map<number, TileTransform>;
+    private tileTransforms: TileTransform[];
+    private _cachedIsEditorMode: boolean = false;
+    private _cached: boolean = false;
 
     constructor(levelData: any) {
         this.levelData = levelData;
         this.positionTrackEvents = new Map();
-        this.tileTransforms = new Map();
+        this.tileTransforms = [];
 
         this.parsePositionTrackEvents();
     }
@@ -91,36 +94,50 @@ export class PositionTrackManager {
      * Calculate all tile positions and transforms
      * Uses ADOFAI-JS structure for position calculation
      * Uses ADOFAI-Src cumulative logic for PositionTrack
+     * 
+     * Memory optimization: Uses Array instead of Map, plain objects instead of THREE.Vector3
      */
-    public calculateAllTileTransforms(isEditorMode: boolean = false): Map<number, TileTransform> {
-        const transforms = new Map<number, TileTransform>();
+    public calculateAllTileTransforms(isEditorMode: boolean = false): TileTransform[] {
+        // Return cached result if available and editor mode hasn't changed
+        if (this._cached && this._cachedIsEditorMode === isEditorMode) {
+            return this.tileTransforms;
+        }
+        this._cachedIsEditorMode = isEditorMode;
         const tiles = this.levelData.tiles;
         const angleData = this.levelData.angleData || [];
+        const n = tiles.length;
         
-        // Start from (0, 0)
-        let currentPos = new THREE.Vector2(0, 0);
+        // Pre-allocate array
+        const transforms: TileTransform[] = new Array(n);
         
-        // Cumulative values (vector in ADOFAI-Src)
-        let cumulativeOffset = new THREE.Vector2(0, 0);
+        // Start from (0, 0) - plain objects instead of THREE.Vector2
+        let currentPosX = 0;
+        let currentPosY = 0;
+        
+        // Cumulative values (vector in ADOFAI-Src) - plain numbers
+        let cumOffsetX = 0;
+        let cumOffsetY = 0;
         let cumulativeRotation = 0;
         let cumulativeScale = 1;
         let cumulativeOpacity = 1;
         let cumulativeStickToFloors = this.levelData.settings?.stickToFloors !== false;
 
         // Pre-calculate all angles
-        const floats = new Array(tiles.length);
-        for (let i = 0; i < tiles.length; i++) {
+        const floats = new Array(n);
+        for (let i = 0; i < n; i++) {
             floats[i] = angleData[i] === 999 ? (angleData[i - 1] || 0) + 180 : angleData[i];
         }
 
-        for (let i = 0; i <= tiles.length; i++) {
-            const isLastTile = i === tiles.length;
+        console.log('[PositionTrackManager] Starting transform calculation, tiles:', n);
+
+        for (let i = 0; i <= n; i++) {
+            const isLastTile = i === n;
             const angle1 = isLastTile ? (floats[i - 1] || 0) : floats[i];
-            const angle2 = i === 0 ? 0 : (floats[i - 1] || 0);
 
             if (!isLastTile) {
-                // Current tile transform (vector2 in ADOFAI-Src)
-                let tileOffset = cumulativeOffset.clone();
+                // Current tile transform - plain numbers
+                let tileOffsetX = cumOffsetX;
+                let tileOffsetY = cumOffsetY;
                 let tileRotation = cumulativeRotation;
                 let tileScale = cumulativeScale;
                 let tileOpacity = cumulativeOpacity;
@@ -136,8 +153,8 @@ export class PositionTrackManager {
 
                         // Apply position offset
                         if (event.positionOffset) {
-                            tileOffset.x += event.positionOffset[0];
-                            tileOffset.y += event.positionOffset[1];
+                            tileOffsetX += event.positionOffset[0];
+                            tileOffsetY += event.positionOffset[1];
                         }
 
                         // Apply rotation
@@ -162,7 +179,8 @@ export class PositionTrackManager {
 
                         // Update cumulative values for next tiles (if not justThisTile)
                         if (!event.justThisTile) {
-                            cumulativeOffset = tileOffset.clone();
+                            cumOffsetX = tileOffsetX;
+                            cumOffsetY = tileOffsetY;
                             cumulativeRotation = tileRotation;
                             cumulativeScale = tileScale;
                             cumulativeOpacity = tileOpacity;
@@ -172,26 +190,28 @@ export class PositionTrackManager {
                 }
 
                 // Calculate final position
-                const finalX = currentPos.x + tileOffset.x;
-                const finalY = currentPos.y + tileOffset.y;
+                const finalX = currentPosX + tileOffsetX;
+                const finalY = currentPosY + tileOffsetY;
                 const zLevel = 12 - i;
 
-                transforms.set(i, {
-                    position: new THREE.Vector3(finalX, finalY, zLevel * 0.001),
+                transforms[i] = {
+                    position: { x: finalX, y: finalY, z: zLevel * 0.001 },
                     rotation: tileRotation,
-                    scale: new THREE.Vector3(tileScale, tileScale, tileScale),
+                    scale: tileScale,
                     opacity: tileOpacity,
                     stickToFloors: tileStickToFloors
-                });
+                };
             }
 
             // Update position for next tile (based on angle)
             const rad = angle1 * Math.PI / 180;
-            currentPos.x += Math.cos(rad);
-            currentPos.y += Math.sin(rad);
+            currentPosX += Math.cos(rad);
+            currentPosY += Math.sin(rad);
         }
 
+        console.log('[PositionTrackManager] Transform calculation complete, total:', transforms.length);
         this.tileTransforms = transforms;
+        this._cached = true;
         return transforms;
     }
 
@@ -199,13 +219,13 @@ export class PositionTrackManager {
      * Get transform for a specific tile
      */
     public getTileTransform(tileIndex: number): TileTransform | undefined {
-        return this.tileTransforms.get(tileIndex);
+        return this.tileTransforms[tileIndex];
     }
 
     /**
      * Get all tile transforms
      */
-    public getAllTileTransforms(): Map<number, TileTransform> {
+    public getAllTileTransforms(): TileTransform[] {
         return this.tileTransforms;
     }
 
@@ -214,6 +234,7 @@ export class PositionTrackManager {
      */
     public dispose(): void {
         this.positionTrackEvents.clear();
-        this.tileTransforms.clear();
+        this.tileTransforms = [];
+        this._cached = false;
     }
 }

@@ -14,7 +14,20 @@ import { CameraController, CameraTimelineEntry } from './CameraController';
 import { DecorationManager } from './DecorationManager';
 import { MoveTrackManager } from './MoveTrackManager';
 import { PositionTrackManager } from './PositionTrackManager';
+import { InstancedTileRenderer, TileInstanceData } from './InstancedTileRenderer';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
+
+function logMem(tag: string) {
+  const mem = (performance as any).memory;
+  if (mem) {
+    const used = (mem.usedJSHeapSize / 1024 / 1024).toFixed(1);
+    const total = (mem.totalJSHeapSize / 1024 / 1024).toFixed(1);
+    const limit = (mem.jsHeapSizeLimit / 1024 / 1024).toFixed(1);
+    console.log(`[MEM] ${tag} | used: ${used}MB / total: ${total}MB / limit: ${limit}MB`);
+  } else {
+    console.log(`[MEM] ${tag} (performance.memory unavailable)`);
+  }
+}
 
 export class Player implements IPlayer {
   private container: HTMLElement | null = null;
@@ -117,6 +130,13 @@ export class Player implements IPlayer {
   private positionTrackManager: PositionTrackManager | null = null;
   private isEditorMode: boolean = false; // Whether we're in editor preview mode
 
+  // GPU Instanced Rendering
+  private instancedRenderer: InstancedTileRenderer | null = null;
+  private useInstancing: boolean = false; // Disabled by default until verified working
+
+  // Lock Camera
+  private lockCamera: boolean = false;
+
   // Bloom Effect
   private bloomEffect: BloomEffect | null = null;
   private bloomEnabled: boolean = false;
@@ -167,6 +187,8 @@ export class Player implements IPlayer {
     this.rendererType = rendererType;
     this.levelData = levelData;
     
+    logMem('=== CONSTRUCTOR START === | tiles: ' + (levelData.tiles?.length ?? 0) + ' actions: ' + (levelData.actions?.length ?? 0) + ' n/angleData: ' + ((levelData as any).n?.length ?? levelData.angleData?.length ?? 0));
+    
     // Initialize camera from settings
     this.cameraController = new CameraController(levelData, [], []);
     this.cameraController.resetCameraState();
@@ -178,10 +200,11 @@ export class Player implements IPlayer {
     // This is needed because we skipped ADOFAI-JS's calculateTilePosition()
     this.calculateBasicTilePositions();
 
-    // Initialize position track manager
-    this.positionTrackManager = new PositionTrackManager(levelData);
-
     // Parse actions if available
+    // For large files (>500K tiles), skip tileEvents Map to save memory.
+    // Actions are already available via tiles[i].actions.
+    const isLargeLevel = (this.levelData.tiles?.length ?? 0) > 500000;
+    logMem('Before action parsing | actions: ' + (this.levelData.actions?.length ?? 0) + ' isLarge: ' + isLargeLevel);
     if (this.levelData.actions) {
       this.levelData.actions.forEach(action => {
         const floor = action.floor;
@@ -195,7 +218,8 @@ export class Player implements IPlayer {
                 this.tileMoveTrackEvents.set(floor, []);
             }
             this.tileMoveTrackEvents.get(floor)!.push(action);
-        } else {
+        } else if (!isLargeLevel) {
+            // Skip tileEvents Map for large files — use getTileEventsForFloor() instead
             if (!this.tileEvents.has(floor)) {
                 this.tileEvents.set(floor, []);
             }
@@ -203,6 +227,7 @@ export class Player implements IPlayer {
         }
       });
     }
+    logMem('After action parsing | tileEvents: ' + this.tileEvents.size + ' cameraEvents: ' + this.tileCameraEvents.size + ' moveTrackEvents: ' + this.tileMoveTrackEvents.size);
 
     // Initialize HitsoundManager
     // If hitsound is "None" or empty, default to "Kick"
@@ -211,6 +236,7 @@ export class Player implements IPlayer {
     const hitsoundVolume = this.levelData.settings?.hitsoundVolume ?? 100;
     console.log('[Player] Initializing HitsoundManager with type:', hitsoundType, 'volume:', hitsoundVolume, '(raw:', rawHitsound, ')');
     this.hitsoundManager = new HitsoundManager(hitsoundType, hitsoundVolume);
+    logMem('After HitsoundManager init');
 
     // Initialize Three.js components
     this.scene = new THREE.Scene();
@@ -223,25 +249,41 @@ export class Player implements IPlayer {
     this.videoOffset = this.levelData.settings?.vidOffset || 0;
 
     // Append extra tile at the end
+    logMem('Before appendExtraTile | tiles: ' + this.levelData.tiles.length);
     this.appendExtraTile();
+    logMem('After appendExtraTile | tiles: ' + this.levelData.tiles.length);
 
     // Re-initialize position track manager with updated tiles (including extra tile)
+    // Reuse the existing instance instead of creating a new one
+    console.log('[Player] Creating PositionTrackManager...');
+    logMem('Before PositionTrackManager');
     this.positionTrackManager = new PositionTrackManager(levelData);
+    logMem('After PositionTrackManager | posEvents: ' + (this.positionTrackManager as any).positionTrackEvents?.size);
 
     // Update levelData.tiles with final positions (including PositionTrack offsets)
+    console.log('[Player] Calculating all tile transforms...');
+    logMem('Before calculateAllTileTransforms');
     const allTransforms = this.positionTrackManager.calculateAllTileTransforms(this.isEditorMode);
+    logMem('After calculateAllTileTransforms | transformCount: ' + allTransforms.length);
+    console.log('[Player] Updating tile positions...');
     for (let i = 0; i < this.levelData.tiles.length; i++) {
-      const transform = allTransforms.get(i);
+      const transform = allTransforms[i];
       if (transform) {
         this.levelData.tiles[i].position = [transform.position.x, transform.position.y];
       }
     }
+    logMem('After tile position update');
 
     // Initialize tile colors from settings (now after appendExtraTile)
+    console.log('[Player] initTileColors...');
     this.tileColorManager.initTileColors();
+    logMem('After initTileColors');
 
     // Calculate cumulative rotations
+    console.log('[Player] calculateCumulativeRotations...');
+    logMem('Before calculateCumulativeRotations');
     this.calculateCumulativeRotations();
+    logMem('After calculateCumulativeRotations');
     
     // Update camera controller with calculated values
     this.cameraController = new CameraController(levelData, this.tileStartTimes, this.tileBPM);
@@ -287,7 +329,7 @@ export class Player implements IPlayer {
     this.scene.add(directionalLight);
     
     // Default camera setup - will be updated on resize/init
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 20000);
     this.camera.position.z = 10;
     this.scene.add(this.camera);
     
@@ -295,11 +337,72 @@ export class Player implements IPlayer {
     
     // Initialize shared decoration resources
     this.initSharedDecorationResources();
+
+    // Initialize GPU instanced renderer
+    this.instancedRenderer = new InstancedTileRenderer(this.scene);
+    console.log('[Player] GPU Instanced rendering enabled');
     
     // Build spatial index for fast visibility checks
+    console.log('[Player] buildSpatialIndex...');
+    logMem('Before buildSpatialIndex');
     this.buildSpatialIndex();
+    logMem('After buildSpatialIndex | spatialGrid: ' + this.spatialGrid.size + ' entries');
     
+    logMem('=== CONSTRUCTOR COMPLETE ===');
     // Hitsounds will be synthesized during loading process with progress display
+  }
+
+  /**
+   * Get events for a specific floor/tile.
+   * For large files, reads directly from tiles[i].actions (no Map allocation).
+   * For small files, uses the pre-parsed tileEvents Map.
+   */
+  private getTileEventsForFloor(floor: number): any[] {
+    if (this.tileEvents.size > 0) {
+      return this.tileEvents.get(floor) || [];
+    }
+    // Fallback: read from tile actions, filtering out camera/moveTrack events
+    const tile = this.levelData.tiles[floor];
+    if (!tile || !tile.actions) return [];
+    // Return the actions array directly (it's already filtered by ADOFAI-JS to not include floor property issues)
+    // We need to filter out MoveCamera and MoveTrack since those are handled separately
+    const result: any[] = [];
+    for (let i = 0; i < tile.actions.length; i++) {
+      const a = tile.actions[i];
+      if (a.eventType !== 'MoveCamera' && a.eventType !== 'MoveTrack') {
+        result.push(a);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Iterate all tile events, calling callback(floor, events[]).
+   * For large files, iterates tiles directly (no Map needed).
+   */
+  private iterateTileEvents(callback: (floor: number, events: any[]) => void): void {
+    if (this.tileEvents.size > 0) {
+      this.tileEvents.forEach((events, floor) => callback(floor, events));
+    } else {
+      // Iterate through tiles that have actions
+      const tiles = this.levelData.tiles;
+      for (let i = 0; i < tiles.length; i++) {
+        const actions = tiles[i]?.actions;
+        if (actions && actions.length > 0) {
+          // Filter out MoveCamera and MoveTrack
+          const filtered: any[] = [];
+          for (let j = 0; j < actions.length; j++) {
+            const a = actions[j];
+            if (a.eventType !== 'MoveCamera' && a.eventType !== 'MoveTrack') {
+              filtered.push(a);
+            }
+          }
+          if (filtered.length > 0) {
+            callback(i, filtered);
+          }
+        }
+      }
+    }
   }
 
   private formatHexColor(hex: string): string {
@@ -403,8 +506,15 @@ export class Player implements IPlayer {
     const tiles = this.levelData.tiles;
     if (!tiles) return;
     
+    console.log('[SpatialIndex] Building for', tiles.length, 'tiles...');
     const gridSize = this.spatialGridSize;
+    const SPATIAL_LOG_INTERVAL = 1000000;
     for (let i = 0; i < tiles.length; i++) {
+      if (i % SPATIAL_LOG_INTERVAL === 0 && i > 0) {
+        const mem = (performance as any).memory;
+        const usedMB = mem ? (mem.usedJSHeapSize / 1024 / 1024).toFixed(1) : '?';
+        console.log(`[SpatialIndex] Progress: ${i}/${tiles.length} | gridCells: ${this.spatialGrid.size} | mem: ${usedMB}MB`);
+      }
       const pos = tiles[i].position;
       const cellX = Math.floor(pos[0] / gridSize);
       const cellY = Math.floor(pos[1] / gridSize);
@@ -463,6 +573,7 @@ export class Player implements IPlayer {
     if (!tiles || tiles.length === 0) return;
 
     const n = tiles.length;
+    console.log('[CalcRot] Allocating 11 arrays for', n, 'tiles...');
     this.cumulativeRotations = new Array(n);
     this.tileStartTimes = new Array(n);
     this.tileDurations = new Array(n - 1);
@@ -474,12 +585,13 @@ export class Player implements IPlayer {
     this.tileStartDist = new Array(n - 1);
     this.tileEndDist = new Array(n - 1);
     this.tileStickToFloors = new Array(n);
+    logMem('CalcRot: After array allocation');
     
     // Initialize tileStickToFloors from PositionTrackManager
     if (this.positionTrackManager) {
       const allTransforms = this.positionTrackManager.calculateAllTileTransforms(this.isEditorMode);
       for (let i = 0; i < n; i++) {
-        const transform = allTransforms.get(i);
+        const transform = allTransforms[i];
         this.tileStickToFloors[i] = transform?.stickToFloors ?? (this.levelData.settings?.stickToFloors !== false);
       }
     } else {
@@ -488,6 +600,7 @@ export class Player implements IPlayer {
         this.tileStickToFloors[i] = this.levelData.settings?.stickToFloors !== false;
       }
     }
+    logMem('CalcRot: After stickToFloors init');
     
     this.cumulativeRotations[0] = 0;
     this.tileStartTimes[0] = 0;
@@ -500,10 +613,17 @@ export class Player implements IPlayer {
     let isCW = true;
 
     // We iterate through tiles to calculate the rotation/time to reach the NEXT tile.
+    console.log('[CalcRot] Starting main loop for', n - 1, 'iterations...');
+    const ROT_LOG_INTERVAL = 1000000;
     for (let i = 0; i < n - 1; i++) {
+        if (i % ROT_LOG_INTERVAL === 0 && i > 0) {
+            const mem = (performance as any).memory;
+            const usedMB = mem ? (mem.usedJSHeapSize / 1024 / 1024).toFixed(1) : '?';
+            console.log(`[CalcRot] Progress: ${i}/${n-1} | mem: ${usedMB}MB`);
+        }
         // Process events for current tile
         let extraRotation = 0;
-        const events = this.tileEvents.get(i);
+        const events = this.getTileEventsForFloor(i);
         if (events) {
             for (let j = 0; j < events.length; j++) {
                 const event = events[j];
@@ -584,7 +704,7 @@ export class Player implements IPlayer {
     if (n > 0) {
         const lastIndex = n - 1;
         let extraRotation = 0;
-        const events = this.tileEvents.get(lastIndex);
+        const events = this.getTileEventsForFloor(lastIndex);
         if (events) {
             for (let j = 0; j < events.length; j++) {
                 const event = events[j];
@@ -781,6 +901,30 @@ export class Player implements IPlayer {
   public setTargetFramerate(framerate: TargetFramerateType): void {
     this.targetFramerate = framerate;
     this.updateFrameInterval();
+  }
+
+  public setUseInstancing(use: boolean): void {
+    if (this.useInstancing === use) return;
+    this.useInstancing = use;
+    console.log('[Player] GPU Instancing:', use ? 'enabled' : 'disabled');
+    // If switching away from instancing, clear instanced meshes from scene
+    if (!use && this.instancedRenderer) {
+      this.instancedRenderer.clearScene();
+      this.updateVisibleTiles();
+    }
+  }
+
+  public setLockCamera(enabled: boolean): void {
+    if (this.lockCamera === enabled) return;
+    this.lockCamera = enabled;
+    this.cameraController.setLockCamera(enabled);
+    console.log('[Player] Lock Camera:', enabled ? 'enabled' : 'disabled');
+    // Reset camera state when toggling to avoid stale transitions
+    if (enabled) {
+      this.cameraPosition.x = this.currentPivotPosition.x;
+      this.cameraPosition.y = this.currentPivotPosition.y;
+      this.camera.rotation.z = 0;
+    }
   }
 
   private updateFrameInterval(): void {
@@ -1128,10 +1272,10 @@ export class Player implements IPlayer {
               const offsetInSeconds = offset / 1000;
               
               console.log('[Player] Scheduling music to play at AudioContext time:', scheduledPlayTime, 'with offset:', offsetInSeconds, 'musicStartDelay:', this.musicStartDelay);
-              this.music.playScheduled(scheduledPlayTime, offsetInSeconds);
+              this.music.playScheduled?.(scheduledPlayTime, offsetInSeconds);
             } else {
               // Fallback to simple play if no AudioContext
-              this.music.audio.currentTime = offset / 1000;
+              this.music.audio!.currentTime = offset / 1000;
               this.music.play();
             }
           } catch (e) {
@@ -1348,7 +1492,7 @@ export class Player implements IPlayer {
       this.bloomTimeline = [];
       const entries: { time: number; event: any }[] = [];
       
-      this.tileEvents.forEach((events, floor) => {
+      this.iterateTileEvents((floor, events) => {
           const startTime = this.tileStartTimes[floor] || 0;
           const bpm = this.tileBPM[floor] || 100;
           const secPerBeat = 60 / bpm;
@@ -1402,7 +1546,7 @@ export class Player implements IPlayer {
       this.customBGTimeline = [];
       const entries: { time: number; event: any }[] = [];
       
-      this.tileEvents.forEach((events, floor) => {
+      this.iterateTileEvents((floor, events) => {
           const startTime = this.tileStartTimes[floor] || 0;
           const bpm = this.tileBPM[floor] || 100;
           const secPerBeat = 60 / bpm;
@@ -1660,11 +1804,12 @@ export class Player implements IPlayer {
       const allTransforms = this.positionTrackManager.calculateAllTileTransforms(this.isEditorMode);
       this.tiles.forEach((mesh, id) => {
         const index = parseInt(id);
-        const transform = allTransforms.get(index);
+        const transform = allTransforms[index];
         if (transform) {
-          mesh.position.copy(transform.position);
+          mesh.position.set(transform.position.x, transform.position.y, transform.position.z);
           mesh.rotation.z = transform.rotation * (Math.PI / 180);
-          mesh.scale.copy(transform.scale);
+          const s = transform.scale;
+          mesh.scale.set(s, s, s);
           
           if ((mesh.material as any).transparent !== undefined) {
             const opacity = transform.opacity < 1 ? transform.opacity : 1;
@@ -1676,7 +1821,7 @@ export class Player implements IPlayer {
       
       // Update tileStickToFloors array
       for (let i = 0; i < this.levelData.tiles.length; i++) {
-        const transform = allTransforms.get(i);
+        const transform = allTransforms[i];
         this.tileStickToFloors[i] = transform?.stickToFloors ?? (this.levelData.settings?.stickToFloors !== false);
       }
     }
@@ -1694,12 +1839,13 @@ export class Player implements IPlayer {
     
     this.tiles.forEach((mesh, id) => {
       const index = parseInt(id);
-      const transform = allTransforms.get(index);
+      const transform = allTransforms[index];
       
       if (transform) {
-        mesh.position.copy(transform.position);
+        mesh.position.set(transform.position.x, transform.position.y, transform.position.z);
         mesh.rotation.z = transform.rotation * (Math.PI / 180);
-        mesh.scale.copy(transform.scale);
+        const s = transform.scale;
+        mesh.scale.set(s, s, s);
         
         if ((mesh.material as any).transparent !== undefined) {
           const opacity = transform.opacity < 1 ? transform.opacity : 1;
@@ -1711,7 +1857,7 @@ export class Player implements IPlayer {
     
     // Update tileStickToFloors array
     for (let i = 0; i < this.levelData.tiles.length; i++) {
-      const transform = allTransforms.get(i);
+      const transform = allTransforms[i];
       this.tileStickToFloors[i] = transform?.stickToFloors ?? (this.levelData.settings?.stickToFloors !== false);
     }
   }
@@ -1720,7 +1866,7 @@ export class Player implements IPlayer {
     this.recolorTimeline = [];
     const entries: { time: number; event: any }[] = [];
     
-    this.tileEvents.forEach((events, floor) => {
+    this.iterateTileEvents((floor, events) => {
         const startTime = this.tileStartTimes[floor] || 0;
         const bpm = this.tileBPM[floor] || 100;
         const secPerBeat = 60 / bpm;
@@ -1797,7 +1943,7 @@ export class Player implements IPlayer {
     this.flashTimeline = [];
     const entries: { time: number; event: any }[] = [];
     
-    this.tileEvents.forEach((events, floor) => {
+    this.iterateTileEvents((floor, events) => {
         const startTime = this.tileStartTimes[floor] || 0;
         const bpm = this.tileBPM[floor] || 100;
         const secPerBeat = 60 / bpm;
@@ -1999,6 +2145,13 @@ export class Player implements IPlayer {
       }
     }
 
+    // GPU Instanced path — single draw call per geometry type
+    if (this.useInstancing && this.instancedRenderer) {
+      this.updateInstancedTiles(newVisibleTiles);
+      return;
+    }
+
+    // Legacy per-mesh path
     const idsInScene = Array.from(this.visibleTiles);
     for (let i = 0; i < idsInScene.length; i++) {
         const id = idsInScene[i];
@@ -2051,6 +2204,107 @@ export class Player implements IPlayer {
             removed++;
         }
     }
+  }
+
+  /**
+   * Get tile geometry shapeKey (same logic as getOrCreateTileMesh but without mesh creation)
+   */
+  private getTileShapeKey(index: number): string {
+    const tile = this.levelData.tiles[index];
+    if (!tile) return '0_0_false_Standard';
+
+    const tileConfig = this.tileColorManager.getTileRecolorConfig(index);
+    const trackStyle = tileConfig?.trackStyle || 'Standard';
+
+    let pred = -180;
+    if (index > 0) {
+      const prevTile = this.levelData.tiles[index - 1];
+      pred = (prevTile.direction || 0) - 180;
+      if (prevTile.direction === 999 && index > 1) {
+        pred = (this.levelData.tiles[index - 2].direction || 0);
+      }
+    }
+
+    const currentDirection = tile.direction || 0;
+    const is999 = (tile.angle === 0);
+    return `${pred}_${currentDirection}_${is999}_${trackStyle}`;
+  }
+
+  /**
+   * Ensure geometry exists in cache, create if needed
+   */
+  private ensureTileGeometry(shapeKey: string): THREE.BufferGeometry | null {
+    let geometry = this.geometryCache.get(shapeKey);
+    if (geometry) return geometry;
+
+    const parts = shapeKey.split('_');
+    const pred = parseFloat(parts[0]);
+    const direction = parseFloat(parts[1]);
+    const is999 = parts[2] === 'true';
+    const trackStyle = parts[3] || 'Standard';
+
+    const meshData = createTrackMesh(pred, direction, is999, undefined, undefined, undefined, trackStyle);
+    if (!meshData || !meshData.faces) return null;
+
+    geometry = new THREE.BufferGeometry();
+    geometry.setIndex(meshData.faces);
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(meshData.vertices, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(meshData.colors, 3));
+    geometry.computeVertexNormals();
+    this.geometryCache.set(shapeKey, geometry);
+    return geometry;
+  }
+
+  /**
+   * GPU instanced tile update — replaces individual mesh creation/destruction
+   */
+  private updateInstancedTiles(visibleIndices: number[]): void {
+    if (!this.instancedRenderer) return;
+
+    const tiles = this.levelData.tiles;
+    const tileData: TileInstanceData[] = new Array(visibleIndices.length);
+    let writeIdx = 0;
+
+    for (let v = 0; v < visibleIndices.length; v++) {
+      const idx = visibleIndices[v];
+      const tile = tiles[idx];
+      if (!tile) continue;
+
+      // Ensure geometry is cached
+      const shapeKey = this.getTileShapeKey(idx);
+      if (!this.ensureTileGeometry(shapeKey)) continue;
+
+      // Get position/transform
+      let x = tile.position[0], y = tile.position[1];
+      let z = (12 - idx) * 0.001;
+      let rotation = 0;
+      let scale = 1;
+
+      if (this.positionTrackManager) {
+        const transform = this.positionTrackManager.getTileTransform(idx);
+        if (transform) {
+          x = transform.position.x;
+          y = transform.position.y;
+          z = transform.position.z;
+          rotation = transform.rotation * (Math.PI / 180);
+          scale = transform.scale;
+        }
+      }
+
+      // Get colors
+      const colors = this.tileColorManager.getTileColor(idx);
+      const color = colors?.color || '#debb7b';
+      const bgColor = colors?.secondaryColor || color;
+
+      tileData[writeIdx++] = { shapeKey, x, y, z, rotation, scale, color, bgColor };
+    }
+
+    // Trim array if some tiles were skipped
+    if (writeIdx < tileData.length) {
+      (tileData as any).length = writeIdx;
+    }
+
+    this.instancedRenderer.update(tileData, this.geometryCache);
   }
 
   private getOrCreateTileMesh(index: number): THREE.Mesh | null {
@@ -2130,9 +2384,10 @@ export class Player implements IPlayer {
     if (this.positionTrackManager) {
       const transform = this.positionTrackManager.getTileTransform(index);
       if (transform) {
-        tileMesh.position.copy(transform.position);
+        tileMesh.position.set(transform.position.x, transform.position.y, transform.position.z);
         tileMesh.rotation.z = transform.rotation * (Math.PI / 180); // Convert degrees to radians
-        tileMesh.scale.copy(transform.scale);
+        const s = transform.scale;
+        tileMesh.scale.set(s, s, s);
         
         // Apply opacity if supported by material
         if (transform.opacity < 1 && (material as any).transparent !== undefined) {
@@ -2153,12 +2408,21 @@ export class Player implements IPlayer {
     let hasTwirl = false;
     let hasSetSpeed = false;
     
-    if (this.tileEvents.has(index)) {
+    if (this.tileEvents.size > 0 && this.tileEvents.has(index)) {
         const events = this.tileEvents.get(index)!;
         events.forEach(e => {
             if (e.eventType === 'Twirl') hasTwirl = true;
             if (e.eventType === 'SetSpeed') hasSetSpeed = true;
         });
+    } else {
+        // Large file fallback: check tiles[i].actions
+        const tile = this.levelData.tiles[index];
+        if (tile?.actions) {
+            for (const e of tile.actions) {
+                if (e.eventType === 'Twirl') hasTwirl = true;
+                if (e.eventType === 'SetSpeed') hasSetSpeed = true;
+            }
+        }
     }
     
     if (hasTwirl && this.sharedDecoGeometry && this.sharedTwirlMaterial) {
@@ -2436,17 +2700,54 @@ export class Player implements IPlayer {
       // Get interpolated camera values
       const interpolated = this.cameraController.getInterpolatedValues(this.elapsedTime);
       
+      // Lock Camera mode: snap camera to current tile center each frame (no smoothing, no rotation)
+      if (this.lockCamera) {
+        this.cameraPosition.x = this.currentPivotPosition.x;
+        this.cameraPosition.y = this.currentPivotPosition.y;
+
+        // Update camera position
+        this.camera.position.x = this.cameraPosition.x;
+        this.camera.position.y = this.cameraPosition.y;
+        
+        // Zoom: still apply from interpolated values (zoom events still work)
+        this.zoom = 100 / interpolated.zoom;
+        this.camera.zoom = this.zoom * this.zoomMultiplier;
+        this.camera.updateProjectionMatrix();
+        
+        // No rotation when camera is locked
+        this.camera.rotation.z = 0;
+
+        // Sync Video Background
+        if (this.videoMesh) {
+            this.videoMesh.position.x = this.camera.position.x;
+            this.videoMesh.position.y = this.camera.position.y;
+            this.videoMesh.rotation.z = this.camera.rotation.z;
+            
+            if (Math.abs(this.camera.zoom - this.lastVisibleCheckZoom) > 0.001) {
+                this.updateVideoSize();
+            }
+        }
+
+        this.updateVisibleTiles();
+        return;
+      }
+      
       // Calculate target position based on camera mode
       const target = this.cameraController.calculateTargetPosition(this.currentPivotPosition);
 
-      // Apply smoothing
+      // Apply smoothing — skip smoothing at extreme BPM (camera would lag thousands of tiles behind)
       const currentBPM = (this.tileBPM && this.tileBPM[this.currentTileIndex]) || 100;
       const smoothingIndex = 15 * Math.pow(100 / Math.max(1, currentBPM), 0.15);
       
-      const step = 1.0 - Math.pow(1.0 - 1.0 / smoothingIndex, delta * 60);
-      
-      this.cameraPosition.x += (target.x - this.cameraPosition.x) * step;
-      this.cameraPosition.y += (target.y - this.cameraPosition.y) * step;
+      if (smoothingIndex < 1) {
+        // Extreme BPM — instant camera follow, no smoothing
+        this.cameraPosition.x = target.x;
+        this.cameraPosition.y = target.y;
+      } else {
+        const step = 1.0 - Math.pow(1.0 - 1.0 / smoothingIndex, delta * 60);
+        this.cameraPosition.x += (target.x - this.cameraPosition.x) * step;
+        this.cameraPosition.y += (target.y - this.cameraPosition.y) * step;
+      }
 
       // Update camera position
       this.camera.position.x = this.cameraPosition.x;
@@ -2673,6 +2974,12 @@ export class Player implements IPlayer {
     if (this.moveTrackManager) {
       this.moveTrackManager.dispose();
       this.moveTrackManager = null;
+    }
+
+    // Cleanup GPU instanced renderer
+    if (this.instancedRenderer) {
+      this.instancedRenderer.dispose();
+      this.instancedRenderer = null;
     }
 
     // Cleanup Three.js resources

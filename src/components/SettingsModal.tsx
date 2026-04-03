@@ -90,6 +90,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           description: t("settings.loadMethod.description"),
           type: "loadMethod",
         },
+        {
+          id: "useInstancing",
+          title: t("settings.useInstancing.title"),
+          description: t("settings.useInstancing.description"),
+          type: "useInstancing",
+        },
+        {
+          id: "lockCamera",
+          title: t("settings.lockCamera.title"),
+          description: t("settings.lockCamera.description"),
+          type: "lockCamera",
+        },
       ],
     },
   ]
@@ -345,6 +357,46 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </button>
                       <span className="text-sm text-slate-600 dark:text-slate-400">
                         {settings.useWorker ? t("settings.useWorker.enabled") : t("settings.useWorker.disabled")}
+                      </span>
+                    </div>
+                  )}
+
+                  {setting.type === "useInstancing" && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => updateSettings({ useInstancing: !settings.useInstancing })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.useInstancing ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.useInstancing ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                        {settings.useInstancing ? t("settings.useInstancing.enabled") : t("settings.useInstancing.disabled")}
+                      </span>
+                    </div>
+                  )}
+
+                  {setting.type === "lockCamera" && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => updateSettings({ lockCamera: !settings.lockCamera })}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          settings.lockCamera ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-600"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            settings.lockCamera ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                        {settings.lockCamera ? t("settings.lockCamera.enabled") : t("settings.lockCamera.disabled")}
                       </span>
                     </div>
                   )}

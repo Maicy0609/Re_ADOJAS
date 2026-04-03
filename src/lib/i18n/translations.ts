@@ -159,6 +159,18 @@ export const translations = {
         enabled: "已启用",
         disabled: "已禁用",
       },
+      useInstancing: {
+        title: "GPU 实例化渲染",
+        description: "⚠️ 实验性功能。使用 GPU Instancing 合并相同几何体的 draw call，大幅减少渲染开销。可能在部分谱面中显示异常。",
+        enabled: "已启用",
+        disabled: "已禁用",
+      },
+      lockCamera: {
+        title: "锁定镜头",
+        description: "锁定镜头至当前砖块中心。过滤所有摄像头事件（保留缩放），每帧直接将镜头移动到当前砖块位置，无过渡动画。",
+        enabled: "已启用",
+        disabled: "已禁用",
+      },
       targetFramerate: {
         title: "目标帧率",
         description: "限制渲染帧率以节省资源",
@@ -337,6 +349,18 @@ export const translations = {
         enabled: "Enabled",
         disabled: "Disabled",
       },
+      useInstancing: {
+        title: "GPU Instanced Rendering",
+        description: "⚠️ Experimental. Uses GPU Instancing to batch draw calls for identical geometries, significantly reducing rendering overhead. May display incorrectly on some levels.",
+        enabled: "Enabled",
+        disabled: "Disabled",
+      },
+      lockCamera: {
+        title: "Lock Camera",
+        description: "Lock camera to current tile center. Filters all camera events (keeps zoom), snaps camera to current tile position every frame with no transition.",
+        enabled: "Enabled",
+        disabled: "Disabled",
+      },
       targetFramerate: {
         title: "Target Framerate",
         description: "Limit rendering framerate to save resources",
@@ -512,6 +536,18 @@ export const translations = {
       useWorker: {
         title: "マルチスレッドレンダリング",
         description: "Web Workerを使用したマルチスレッドメッシュ生成（推奨）。",
+        enabled: "有効",
+        disabled: "無効",
+      },
+      useInstancing: {
+        title: "GPUインスタンシングレンダリング",
+        description: "⚠️ 実験的機能。GPUインスタンシングを使用して同一ジオメトリのドローコールを統合し、レンダリングオーバーヘッドを大幅に削減します。一部のレベルでは正しく表示されない場合があります。",
+        enabled: "有効",
+        disabled: "無効",
+      },
+      lockCamera: {
+        title: "カメラロック",
+        description: "カメラを現在のタイルの中心に固定します。すべてのカメライベントをフィルタリング（ズームは保持）、毎フレーム遷移なしで現在のタイル位置にカメラをスナップします。",
         enabled: "有効",
         disabled: "無効",
       },

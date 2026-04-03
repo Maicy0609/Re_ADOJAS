@@ -16,6 +16,8 @@ interface AppSettings {
   loadMethod: LoadMethodType
   hitsoundEnabled: boolean
   showStats: boolean // 是否使用 stats.js 面板
+  useInstancing: boolean // GPU 实例化渲染
+  lockCamera: boolean // 锁定镜头
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -27,6 +29,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   loadMethod: "async", // Default to async loading
   hitsoundEnabled: true, // Default to enabled
   showStats: false, // Default to using default FPS panel
+  useInstancing: false, // Default to disabled (experimental)
+  lockCamera: false, // Default to disabled
 }
 
 export function useAppSettings() {

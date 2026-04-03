@@ -10,6 +10,8 @@ import { getSharedAudioContext } from './HTMLAudioMusic';
 
 // Threshold for switching to real-time mode (to avoid extremely long synthesis)
 const REALTIME_MODE_THRESHOLD = 500000; // 500k hits - use real-time mode above this
+// Duration threshold for real-time mode (seconds) - prevents OOM from huge AudioBuffer
+const REALTIME_MODE_DURATION_THRESHOLD = 300; // 5 minutes - use real-time mode above this
 
 /**
  * Soft clipping function - shared across all processing paths
@@ -248,9 +250,12 @@ export class HitsoundManager {
     this.scheduledTimestamps = [...timestamps].sort((a, b) => a - b);
     this.totalDuration = totalDuration;
     
-    // Check if we should use real-time mode for very large hit counts
-    if (this.scheduledTimestamps.length > REALTIME_MODE_THRESHOLD) {
-      console.log('[HitsoundManager] Using real-time mode for', this.scheduledTimestamps.length, 'hits (threshold:', REALTIME_MODE_THRESHOLD, ')');
+    // Check if we should use real-time mode for very large hit counts or long duration
+    if (this.scheduledTimestamps.length > REALTIME_MODE_THRESHOLD || totalDuration > REALTIME_MODE_DURATION_THRESHOLD) {
+      const reason = this.scheduledTimestamps.length > REALTIME_MODE_THRESHOLD
+        ? `too many hits (${this.scheduledTimestamps.length})`
+        : `duration too long (${totalDuration.toFixed(1)}s > ${REALTIME_MODE_DURATION_THRESHOLD}s)`;
+      console.log('[HitsoundManager] Using real-time mode for', reason);
       this.useRealtimeMode = true;
       this.synthesizedBuffer = null;
       

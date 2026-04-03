@@ -75,31 +75,22 @@ export function useFileHandlers({
 }: UseFileHandlersProps) {
   
   // 辅助函数：初始化玩家并合成打拍音
-  const initializePlayerWithHitsounds = async (loadedLevel: any, isVeryLargeFile: boolean = false): Promise<void> => {
+  const initializePlayerWithHitsounds = async (loadedLevel: any, skipHitsounds: boolean = false): Promise<void> => {
     initializePlayer(loadedLevel)
     
+    // 跳过 hitsound 合成（大文件模式下省内存）
+    if (skipHitsounds) return
+
     // Synthesize hitsounds with progress display
     if (previewerRef.current) {
-      if (isVeryLargeFile) {
-        // 对于超大文件，显示详细的合成进度
-        setLoadingProgress(85)
-        setLoadingStatus(t("loading.synthesizingHitsounds"))
-        
-        await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
-          // Map 0-100 to 85-99
-          const mappedPercent = 85 + (percent / 100) * 14
-          setLoadingProgress(mappedPercent)
-        })
-      } else {
-        setLoadingProgress(96)
-        setLoadingStatus(t("loading.synthesizingHitsounds"))
-        
-        await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
-          // Map 0-100 to 96-100
-          const mappedPercent = 96 + (percent / 100) * 4
-          setLoadingProgress(mappedPercent)
-        })
-      }
+      setLoadingProgress(96)
+      setLoadingStatus(t("loading.synthesizingHitsounds"))
+      
+      await previewerRef.current.preSynthesizeHitsoundsWithProgress((percent) => {
+        // Map 0-100 to 96-100
+        const mappedPercent = 96 + (percent / 100) * 4
+        setLoadingProgress(mappedPercent)
+      })
     }
   }
 
@@ -118,7 +109,7 @@ export function useFileHandlers({
       })
 
       // 解析文件
-      const parsedData = largeFileParser.parse(arrayBuffer)
+      let parsedData = largeFileParser.parse(arrayBuffer)
       console.log('[DEBUG] LargeFileParser result:', {
         hasAngleData: !!parsedData.angleData,
         angleDataLength: parsedData.angleData?.length,
@@ -137,6 +128,12 @@ export function useFileHandlers({
       })
 
       level.on("load", async (loadedLevel: any): Promise<void> => {
+        // 释放原始 ArrayBuffer（640MB），Level 已完成解析不再需要
+        // @ts-ignore - intentional reassignment to free memory
+        arrayBuffer = null
+        // 释放 parsedData 引用（angleData/actions 已被 Level 持有）
+        parsedData = null
+
         // 计算瓦片位置
         loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
           setLoadingProgress(80 + Math.round(progressEvent.percent * 0.05))
@@ -147,8 +144,13 @@ export function useFileHandlers({
         setLoadingProgress(85)
         setLoadingStatus(t("loading.buildingScene"))
 
-        // Initialize player and synthesize hitsounds
-        await initializePlayerWithHitsounds(loadedLevel, isVeryLargeFile)
+        // Initialize player, skip hitsounds for large files to prevent OOM
+        const mem = (performance as any).memory;
+        if (mem) {
+          const usedMB = (mem.usedJSHeapSize / 1024 / 1024).toFixed(1);
+          console.log(`[loadLargeFile] Before Player init | mem: ${usedMB}MB | tiles: ${loadedLevel.tiles?.length} | actions: ${loadedLevel.actions?.length} | n: ${(loadedLevel as any).n?.length}`);
+        }
+        await initializePlayerWithHitsounds(loadedLevel, true)
 
         setLoadingProgress(100)
         window.showNotification?.("success", t("editor.notifications.loadSuccess"))

@@ -13,7 +13,7 @@ export function getSharedAudioContext(): AudioContext {
 }
 
 export class HTMLAudioMusic implements IMusic {
-  private audio: HTMLAudioElement;
+  public audio: HTMLAudioElement;
   private _isPlaying: boolean = false;
   private _isPaused: boolean = false;
   

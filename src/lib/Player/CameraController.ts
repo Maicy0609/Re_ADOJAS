@@ -58,6 +58,17 @@ export class CameraController {
     private tileStartTimes: number[];
     private tileBPM: number[];
     
+    // Lock Camera: when enabled, only zoom events are processed
+    private _lockCamera: boolean = false;
+    
+    public setLockCamera(enabled: boolean): void {
+        this._lockCamera = enabled;
+    }
+    
+    public getLockCamera(): boolean {
+        return this._lockCamera;
+    }
+    
     constructor(levelData: any, tileStartTimes: number[], tileBPM: number[]) {
         this.levelData = levelData;
         this.tileStartTimes = tileStartTimes;
@@ -185,6 +196,39 @@ export class CameraController {
     ): void {
         // Skip disabled events
         if (!isEventActive(event)) return;
+        
+        // Lock Camera mode: only process zoom changes, skip position/rotation/relativeTo
+        if (this._lockCamera) {
+            if (event.zoom !== undefined && event.zoom !== null) {
+                this.cameraMode.zoom = event.zoom;
+                // Setup zoom-only transition if duration > 0
+                const duration = (event.duration !== undefined) ? event.duration : 0;
+                const eventBPM = (this.tileBPM && this.tileBPM[floorIndex]) || 100;
+                const durationSeconds = duration * (60 / eventBPM);
+                
+                if (durationSeconds > 0) {
+                    // Start a zoom-only transition
+                    if (this.cameraTransition.active) {
+                        this.cameraTransition.active = false;
+                    }
+                    this.cameraTransition.active = true;
+                    this.cameraTransition.startTime = elapsedTime / 1000;
+                    this.cameraTransition.duration = durationSeconds;
+                    this.cameraTransition.ease = event.ease || 'Linear';
+                    this.cameraTransition.startSnapshot = {
+                        position: { x: 0, y: 0 },
+                        zoom: cameraSnapshot ? cameraSnapshot.zoom : 100,
+                        rotation: 0,
+                        logicalPosition: { x: 0, y: 0 },
+                        logicalZoom: cameraSnapshot ? cameraSnapshot.zoom : 100,
+                        logicalRotation: 0
+                    };
+                } else {
+                    this.cameraTransition.active = false;
+                }
+            }
+            return;
+        }
         
         // Capture current camera state as the new transition start point
         // If there's an active transition, we need to capture the interpolated position

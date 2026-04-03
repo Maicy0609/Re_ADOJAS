@@ -88,6 +88,8 @@ export function useEditorState() {
       player.setShowTrail(settings.showTrail)
       player.setHitsoundEnabled(settings.hitsoundEnabled)
       player.setUseWorker(settings.useWorker)
+      player.setUseInstancing(settings.useInstancing)
+      player.setLockCamera(settings.lockCamera)
       player.setTargetFramerate(settings.targetFramerate)
       player.setStatsPanel(settings.showStats)
       
@@ -253,6 +255,20 @@ export function useEditorState() {
     }
   }, [settings.useWorker])
 
+  // 监听GPU实例化设置变化
+  useEffect(() => {
+    if (previewerRef.current) {
+      previewerRef.current.setUseInstancing(settings.useInstancing)
+    }
+  }, [settings.useInstancing])
+
+  // 监听锁定镜头设置变化
+  useEffect(() => {
+    if (previewerRef.current) {
+      previewerRef.current.setLockCamera(settings.lockCamera)
+    }
+  }, [settings.lockCamera])
+
   // 监听帧率设置变化
   useEffect(() => {
     if (previewerRef.current) {
@@ -314,6 +330,8 @@ export function useEditorState() {
             player.setShowTrail(settings.showTrail)
             player.setHitsoundEnabled(settings.hitsoundEnabled)
             player.setUseWorker(settings.useWorker)
+            player.setUseInstancing(settings.useInstancing)
+            player.setLockCamera(settings.lockCamera)
             player.setTargetFramerate(settings.targetFramerate)
             player.setStatsPanel(settings.showStats)
             
