@@ -4,6 +4,7 @@ const MAX_INSTANCES = 8000;
 
 interface PoolEntry {
     mesh: THREE.InstancedMesh;
+    mainColorAttr: THREE.InstancedBufferAttribute;
     bgColorAttr: THREE.InstancedBufferAttribute;
 }
 
@@ -23,6 +24,10 @@ export interface TileInstanceData {
  * 
  * Replaces per-tile Mesh draw calls (N draw calls) with a single
  * InstancedMesh draw call per geometry type (~1-10 draw calls total).
+ * 
+ * Uses only custom InstancedBufferAttributes for per-instance data
+ * (no reliance on Three.js internal instanceColor injection) for
+ * maximum mobile/desktop browser compatibility.
  */
 export class InstancedTileRenderer {
     private pool = new Map<string, PoolEntry>();
@@ -82,20 +87,18 @@ export class InstancedTileRenderer {
                 this._matrix.compose(this._position, this._quaternion, this._scale);
                 entry.mesh.setMatrixAt(i, this._matrix);
 
-                // Set main color via setColorAt (Three.js handles USE_INSTANCING_COLOR define)
+                // Set main tile color via custom instance attribute
                 this._color.set(t.color);
-                entry.mesh.setColorAt(i, this._color);
+                entry.mainColorAttr.setXYZ(i, this._color.r, this._color.g, this._color.b);
 
-                // Set bg color (via custom instance attribute)
+                // Set background color via custom instance attribute
                 this._color.set(t.bgColor);
                 entry.bgColorAttr.setXYZ(i, this._color.r, this._color.g, this._color.b);
             }
 
             entry.mesh.count = count;
             entry.mesh.instanceMatrix.needsUpdate = true;
-            if (entry.mesh.instanceColor) {
-                entry.mesh.instanceColor.needsUpdate = true;
-            }
+            entry.mainColorAttr.needsUpdate = true;
             entry.bgColorAttr.needsUpdate = true;
         }
 
@@ -122,42 +125,50 @@ export class InstancedTileRenderer {
         // Clone geometry so each entry has independent instanced attributes
         const geometry = baseGeometry.clone();
 
+        // Per-instance main color attribute (tile color)
+        const mainColors = new Float32Array(MAX_INSTANCES * 3);
+        const mainColorAttr = new THREE.InstancedBufferAttribute(mainColors, 3);
+        mainColorAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('aInstanceMainColor', mainColorAttr);
+
         // Per-instance background color attribute
         const bgColors = new Float32Array(MAX_INSTANCES * 3);
         const bgColorAttr = new THREE.InstancedBufferAttribute(bgColors, 3);
         bgColorAttr.setUsage(THREE.DynamicDrawUsage);
         geometry.setAttribute('aInstanceBgColor', bgColorAttr);
 
-        // Use a custom ShaderMaterial that reads instanceColor + aInstanceBgColor + vertex color
+        // Custom ShaderMaterial — all per-instance data via custom attributes
+        // No reliance on Three.js internal instanceColor for cross-platform compatibility
         const material = new THREE.ShaderMaterial({
             uniforms: {},
             vertexShader: `
+                attribute vec3 aInstanceMainColor;
                 attribute vec3 aInstanceBgColor;
                 varying vec3 vMask;
+                varying vec3 vMainColor;
                 varying vec3 vBgColor;
 
                 void main() {
                     vMask = color;
+                    vMainColor = aInstanceMainColor;
                     vBgColor = aInstanceBgColor;
-                    
+
                     vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
             fragmentShader: `
                 varying vec3 vMask;
+                varying vec3 vMainColor;
                 varying vec3 vBgColor;
 
                 void main() {
-                    // instanceColor is automatically available in InstancedMesh with setColorAt
-                    vec3 finalColor = mix(vBgColor, instanceColor, vMask.r);
+                    vec3 finalColor = mix(vBgColor, vMainColor, vMask.r);
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
             vertexColors: true,
             side: THREE.DoubleSide,
-            // Force Three.js to enable USE_INSTANCING for instanceMatrix
-            // instanceColor is managed by Three.js internally via setColorAt
         });
 
         const mesh = new THREE.InstancedMesh(geometry, material, MAX_INSTANCES);
@@ -166,7 +177,7 @@ export class InstancedTileRenderer {
 
         this.scene.add(mesh);
 
-        entry = { mesh, bgColorAttr };
+        entry = { mesh, mainColorAttr, bgColorAttr };
         this.pool.set(shapeKey, entry);
         return entry;
     }
