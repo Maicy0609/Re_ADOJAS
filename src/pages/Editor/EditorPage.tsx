@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Settings, Save, Upload, Download, Music, Video, Image } from "lucide-react"
+import { ArrowLeft, Settings, Save, Upload, Download, Music, Video, Image, Maximize, Minimize } from "lucide-react"
 import { SettingsModal } from "@/components/SettingsModal"
 import { LoadingModal } from "@/components/LoadingModal"
 import { NotificationSystem } from "./NotificationSystem"
@@ -33,6 +33,7 @@ export default function EditorPage() {
     showExitDialog,
     showVideoImportDialog,
     isDark,
+    isFullscreen,
     i18nMounted,
     settings,
     
@@ -55,6 +56,7 @@ export default function EditorPage() {
     handleImportVideoBackground,
     handleImportDecoration,
     handleCancelVideoImport,
+    toggleFullscreen,
     
     // Translation
     t
@@ -73,7 +75,7 @@ export default function EditorPage() {
     <div className={`h-screen ${isDark ? "bg-slate-900" : "bg-slate-50"} overflow-hidden relative`}>
       <NotificationSystem />
 
-      {/* Hidden file inputs */}
+      {/* Hidden file inputs — no capture attribute to use file picker instead of camera on mobile */}
       <input ref={fileInputRef} type="file" accept=".adofai,.json,.zip" onChange={handleFileLoad} className="hidden" />
       <input ref={audioInputRef} type="file" accept="audio/*" onChange={handleAudioLoad} className="hidden" />
       <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoLoad} className="hidden" />
@@ -180,6 +182,19 @@ export default function EditorPage() {
             title={t("common.settings")}
           >
             <Settings className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleFullscreen}
+            className={`${
+              isDark
+                ? "text-slate-300 hover:text-white hover:bg-slate-700"
+                : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+            } bg-black/20 backdrop-blur-sm ${isFullscreen ? "border border-purple-500/50" : ""}`}
+            title={t("editor.fullscreen")}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
           </Button>
         </div>
       </div>

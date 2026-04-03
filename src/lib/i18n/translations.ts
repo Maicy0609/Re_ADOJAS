@@ -62,6 +62,7 @@ export const translations = {
       play: "播放",
       pause: "暂停",
       exitPlayMode: "退出播放模式",
+      fullscreen: "全屏",
       exitDialog: {
         title: "退出确认",
         message: "是否舍弃尚未保存的更改？",
@@ -171,6 +172,12 @@ export const translations = {
         enabled: "已启用",
         disabled: "已禁用",
       },
+      fullscreen: {
+        title: "全屏模式",
+        description: "进入全屏模式以获得更好的沉浸式体验，兼容 Safari 浏览器。",
+        enabled: "已启用",
+        disabled: "已禁用",
+      },
       targetFramerate: {
         title: "目标帧率",
         description: "限制渲染帧率以节省资源",
@@ -252,6 +259,7 @@ export const translations = {
       play: "Play",
       pause: "Pause",
       exitPlayMode: "Exit Play Mode",
+      fullscreen: "Fullscreen",
       exitDialog: {
         title: "Exit Confirmation",
         message: "Discard unsaved changes?",
@@ -361,6 +369,12 @@ export const translations = {
         enabled: "Enabled",
         disabled: "Disabled",
       },
+      fullscreen: {
+        title: "Fullscreen Mode",
+        description: "Enter fullscreen for an immersive experience. Safari compatible.",
+        enabled: "Enabled",
+        disabled: "Disabled",
+      },
       targetFramerate: {
         title: "Target Framerate",
         description: "Limit rendering framerate to save resources",
@@ -442,6 +456,7 @@ export const translations = {
       play: "再生",
       pause: "一時停止",
       exitPlayMode: "再生モードを終了",
+      fullscreen: "全画面",
       exitDialog: {
         title: "終了確認",
         message: "保存されていない変更を破棄しますか？",
@@ -548,6 +563,12 @@ export const translations = {
       lockCamera: {
         title: "カメラロック",
         description: "カメラを現在のタイルの中心に固定します。すべてのカメライベントをフィルタリング（ズームは保持）、毎フレーム遷移なしで現在のタイル位置にカメラをスナップします。",
+        enabled: "有効",
+        disabled: "無効",
+      },
+      fullscreen: {
+        title: "全画面モード",
+        description: "没入感のある体験のために全画面モードに入ります。Safari互換。",
         enabled: "有効",
         disabled: "無効",
       },
