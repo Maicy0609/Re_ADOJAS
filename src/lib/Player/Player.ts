@@ -907,8 +907,22 @@ export class Player implements IPlayer {
     if (this.useInstancing === use) return;
     this.useInstancing = use;
     console.log('[Player] GPU Instancing:', use ? 'enabled' : 'disabled');
-    // If switching away from instancing, clear instanced meshes from scene
-    if (!use && this.instancedRenderer) {
+
+    if (use) {
+      // Switching TO instancing: clear legacy meshes from scene
+      const idsInScene = Array.from(this.visibleTiles);
+      for (let i = 0; i < idsInScene.length; i++) {
+        const mesh = this.tiles.get(idsInScene[i]);
+        if (mesh) {
+          this.scene.remove(mesh);
+        }
+      }
+      this.visibleTiles.clear();
+      // Invalidate camera cache so updateVisibleTiles will actually run
+      this.lastVisibleCheckPos.set(NaN, NaN, NaN);
+      this.updateVisibleTiles();
+    } else if (this.instancedRenderer) {
+      // Switching AWAY from instancing: clear instanced meshes from scene
       this.instancedRenderer.clearScene();
       this.updateVisibleTiles();
     }
