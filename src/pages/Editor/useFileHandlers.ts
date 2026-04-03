@@ -128,35 +128,43 @@ export function useFileHandlers({
       })
 
       level.on("load", async (loadedLevel: any): Promise<void> => {
-        // 释放原始 ArrayBuffer（640MB），Level 已完成解析不再需要
-        // @ts-ignore - intentional reassignment to free memory
-        arrayBuffer = null
-        // 释放 parsedData 引用（angleData/actions 已被 Level 持有）
-        parsedData = null
+        try {
+          // 释放原始 ArrayBuffer（640MB），Level 已完成解析不再需要
+          // @ts-ignore - intentional reassignment to free memory
+          arrayBuffer = null
+          // 释放 parsedData 引用（angleData/actions 已被 Level 持有）
+          parsedData = null
 
-        // 计算瓦片位置
-        loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-          setLoadingProgress(80 + Math.round(progressEvent.percent * 0.05))
-          setLoadingStatus(getStageText(progressEvent.stage, t))
-        })
-        // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
+          // 计算瓦片位置
+          loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
+            setLoadingProgress(80 + Math.round(progressEvent.percent * 0.05))
+            setLoadingStatus(getStageText(progressEvent.stage, t))
+          })
+          // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
 
-        setLoadingProgress(85)
-        setLoadingStatus(t("loading.buildingScene"))
+          setLoadingProgress(85)
+          setLoadingStatus(t("loading.buildingScene"))
 
-        // Initialize player, skip hitsounds for large files to prevent OOM
-        const mem = (performance as any).memory;
-        if (mem) {
-          const usedMB = (mem.usedJSHeapSize / 1024 / 1024).toFixed(1);
-          console.log(`[loadLargeFile] Before Player init | mem: ${usedMB}MB | tiles: ${loadedLevel.tiles?.length} | actions: ${loadedLevel.actions?.length} | n: ${(loadedLevel as any).n?.length}`);
+          // Initialize player, skip hitsounds for large files to prevent OOM
+          const mem = (performance as any).memory;
+          if (mem) {
+            const usedMB = (mem.usedJSHeapSize / 1024 / 1024).toFixed(1);
+            console.log(`[loadLargeFile] Before Player init | mem: ${usedMB}MB | tiles: ${loadedLevel.tiles?.length} | actions: ${loadedLevel.actions?.length} | n: ${(loadedLevel as any).n?.length}`);
+          }
+          await initializePlayerWithHitsounds(loadedLevel, true)
+
+          setLoadingProgress(100)
+          window.showNotification?.("success", t("editor.notifications.loadSuccess"))
+          setIsLoading(false)
+          setLoadingProgress(0)
+          setLoadingStatus("")
+        } catch (error) {
+          console.error('[loadLargeFile] Player init error:', error)
+          window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
+          setIsLoading(false)
+          setLoadingProgress(0)
+          setLoadingStatus("")
         }
-        await initializePlayerWithHitsounds(loadedLevel, true)
-
-        setLoadingProgress(100)
-        window.showNotification?.("success", t("editor.notifications.loadSuccess"))
-        setIsLoading(false)
-        setLoadingProgress(0)
-        setLoadingStatus("")
       })
 
       await level.load()
@@ -178,24 +186,32 @@ export function useFileHandlers({
     })
     
     level.on("load", async (loadedLevel: any): Promise<void> => {
-      // 计算瓦片位置时也会触发进度事件
-      loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-        setLoadingProgress(progressEvent.percent)
-        setLoadingStatus(getStageText(progressEvent.stage, t))
-      })
-      // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
-      
-      setLoadingProgress(95)
-      setLoadingStatus(t("loading.buildingScene"))
-      
-      // Initialize player and synthesize hitsounds
-      await initializePlayerWithHitsounds(loadedLevel)
-      
-      setLoadingProgress(100)
-      window.showNotification?.("success", t("editor.notifications.loadSuccess"))
-      setIsLoading(false)
-      setLoadingProgress(0)
-      setLoadingStatus("")
+      try {
+        // 计算瓦片位置时也会触发进度事件
+        loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
+          setLoadingProgress(progressEvent.percent)
+          setLoadingStatus(getStageText(progressEvent.stage, t))
+        })
+        // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
+        
+        setLoadingProgress(95)
+        setLoadingStatus(t("loading.buildingScene"))
+        
+        // Initialize player and synthesize hitsounds
+        await initializePlayerWithHitsounds(loadedLevel)
+        
+        setLoadingProgress(100)
+        window.showNotification?.("success", t("editor.notifications.loadSuccess"))
+        setIsLoading(false)
+        setLoadingProgress(0)
+        setLoadingStatus("")
+      } catch (error) {
+        console.error('[loadSync] Player init error:', error)
+        window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
+        setIsLoading(false)
+        setLoadingProgress(0)
+        setLoadingStatus("")
+      }
     })
     
     level.load()
@@ -212,24 +228,32 @@ export function useFileHandlers({
     })
     
     level.on("load", async (loadedLevel: any): Promise<void> => {
-      // 计算瓦片位置时也会触发进度事件
-      loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-        setLoadingProgress(progressEvent.percent)
-        setLoadingStatus(getStageText(progressEvent.stage, t))
-      })
-      // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
-      
-      setLoadingProgress(95)
-      setLoadingStatus(t("loading.buildingScene"))
-      
-      // Initialize player and synthesize hitsounds
-      await initializePlayerWithHitsounds(loadedLevel)
-      
-      setLoadingProgress(100)
-      window.showNotification?.("success", t("editor.notifications.loadSuccess"))
-      setIsLoading(false)
-      setLoadingProgress(0)
-      setLoadingStatus("")
+      try {
+        // 计算瓦片位置时也会触发进度事件
+        loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
+          setLoadingProgress(progressEvent.percent)
+          setLoadingStatus(getStageText(progressEvent.stage, t))
+        })
+        // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
+        
+        setLoadingProgress(95)
+        setLoadingStatus(t("loading.buildingScene"))
+        
+        // Initialize player and synthesize hitsounds
+        await initializePlayerWithHitsounds(loadedLevel)
+        
+        setLoadingProgress(100)
+        window.showNotification?.("success", t("editor.notifications.loadSuccess"))
+        setIsLoading(false)
+        setLoadingProgress(0)
+        setLoadingStatus("")
+      } catch (error) {
+        console.error('[loadAsync] Player init error:', error)
+        window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
+        setIsLoading(false)
+        setLoadingProgress(0)
+        setLoadingStatus("")
+      }
     })
     
     await level.load()
@@ -263,21 +287,30 @@ export function useFileHandlers({
           // Use translated stage text
           setLoadingStatus(getStageText(stage, t))
         } else if (type === 'result') {
-          const { levelData } = data
-          
-          setLoadingProgress(95)
-          setLoadingStatus(t("loading.buildingScene"))
-          
-          // Create player and synthesize hitsounds
-          await initializePlayerWithHitsounds(levelData)
-          
-          setLoadingProgress(100)
-          window.showNotification?.("success", t("editor.notifications.loadSuccess"))
-          setIsLoading(false)
-          setLoadingProgress(0)
-          setLoadingStatus("")
-          
-          worker.terminate()
+          try {
+            const { levelData } = data
+            
+            setLoadingProgress(95)
+            setLoadingStatus(t("loading.buildingScene"))
+            
+            // Create player and synthesize hitsounds
+            await initializePlayerWithHitsounds(levelData)
+            
+            setLoadingProgress(100)
+            window.showNotification?.("success", t("editor.notifications.loadSuccess"))
+            setIsLoading(false)
+            setLoadingProgress(0)
+            setLoadingStatus("")
+          } catch (error) {
+            console.error('[loadWithWorker] Player init error:', error)
+            window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
+            setIsLoading(false)
+            setLoadingProgress(0)
+            setLoadingStatus("")
+          } finally {
+            worker.terminate()
+          }
+          return
         } else if (type === 'error') {
           console.error('Worker error:', error)
           window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
@@ -361,23 +394,24 @@ export function useFileHandlers({
       })
       
       level.on("load", async (loadedLevel: any): Promise<void> => {
-        loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
-          setLoadingProgress(10 + Math.round(progressEvent.percent * 0.5))
-          setLoadingStatus(getStageText(progressEvent.stage, t))
-        })
-        // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
-        
-        setLoadingProgress(60)
-        setLoadingStatus(t("loading.buildingScene"))
-        
-        // Initialize player and synthesize hitsounds
-        await initializePlayerWithHitsounds(loadedLevel)
-        
-        setLoadingProgress(70)
-        
-        // Auto-load audio if specified in settings
-        const settings = loadedLevel.settings || {}
-        const songFilename = settings.songFilename
+        try {
+          loadedLevel.on("parse:progress", (progressEvent: ParseProgressEvent): void => {
+            setLoadingProgress(10 + Math.round(progressEvent.percent * 0.5))
+            setLoadingStatus(getStageText(progressEvent.stage, t))
+          })
+          // loadedLevel.calculateTilePosition() // Skip - using our own position calculation in PositionTrackManager
+          
+          setLoadingProgress(60)
+          setLoadingStatus(t("loading.buildingScene"))
+          
+          // Initialize player and synthesize hitsounds
+          await initializePlayerWithHitsounds(loadedLevel)
+          
+          setLoadingProgress(70)
+          
+          // Auto-load audio if specified in settings
+          const settings = loadedLevel.settings || {}
+          const songFilename = settings.songFilename
         if (songFilename) {
           // Try to find the audio file in ZIP
           const audioExtensions = ['.mp3', '.ogg', '.wav', '.m4a', '.flac']
@@ -522,11 +556,18 @@ export function useFileHandlers({
           }
         }
         
-        setLoadingProgress(100)
-        window.showNotification?.("success", t("editor.notifications.zipLoadSuccess"))
-        setIsLoading(false)
-        setLoadingProgress(0)
-        setLoadingStatus("")
+          setLoadingProgress(100)
+          window.showNotification?.("success", t("editor.notifications.zipLoadSuccess"))
+          setIsLoading(false)
+          setLoadingProgress(0)
+          setLoadingStatus("")
+        } catch (error) {
+          console.error('[loadFromZip] Player init error:', error)
+          window.showNotification?.("error", `${t("editor.notifications.zipLoadError")}: ${error}`)
+          setIsLoading(false)
+          setLoadingProgress(0)
+          setLoadingStatus("")
+        }
       })
       
       await level.load()

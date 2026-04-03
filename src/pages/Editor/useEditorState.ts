@@ -352,53 +352,62 @@ export function useEditorState() {
       try {
         const level = new ADOFAI.Level(example, parser)
         level.on("load", async (loadedLevel: any): Promise<void> => {
-          loadedLevel.calculateTilePosition()
+          try {
+            loadedLevel.calculateTilePosition()
+          } catch (e) {
+            console.warn('[Example] calculateTilePosition failed (non-critical):', e)
+          }
           setAdofaiFile(loadedLevel)
 
-          if (previewerRef.current) {
-            console.log("Disposing old Player...")
-            previewerRef.current.destroyPlayer()
-            previewerRef.current = null
-          }
-
-          if (containerRef.current && fpsCounterRef.current && infoRef.current) {
-            const player = new Player(loadedLevel as ILevelData)
-            player.createPlayer(containerRef.current)
-            player.setRenderer(settings.renderer)
-            player.setRenderMethod(settings.renderMethod)
-            player.setShowTrail(settings.showTrail)
-            player.setHitsoundEnabled(settings.hitsoundEnabled)
-            player.setUseWorker(settings.useWorker)
-            player.setUseInstancing(settings.useInstancing)
-            player.setLockCamera(settings.lockCamera)
-            player.setTargetFramerate(settings.targetFramerate)
-            player.setStatsPanel(settings.showStats)
-            
-            // Synthesize hitsounds
-            await player.preSynthesizeHitsoundsWithProgress()
-            
-            // Only set stats callback if not using stats.js
-            if (!settings.showStats) {
-              player.setStatsCallback((stats) => {
-                if (fpsCounterRef.current) {
-                  fpsCounterRef.current.textContent = `FPS  ${stats.fps.toFixed(2)}`
-                }
-                if (infoRef.current) {
-                  const bpm = loadedLevel.settings?.bpm || 0
-                  infoRef.current.innerHTML = `
-                    <div class="space-y-1">
-                      <div>Time: ${(stats.time / 1000).toFixed(2)}s</div>
-                      <div>Tile: ${stats.tileIndex} / ${loadedLevel.tiles?.length || 0}</div>
-                      <div>BPM: ${bpm}</div>
-                    </div>
-                  `
-                }
-              })
+          try {
+            if (previewerRef.current) {
+              console.log("Disposing old Player...")
+              previewerRef.current.destroyPlayer()
+              previewerRef.current = null
             }
-            
-            previewerRef.current = player
+
+            if (containerRef.current && fpsCounterRef.current && infoRef.current) {
+              const player = new Player(loadedLevel as ILevelData)
+              player.createPlayer(containerRef.current)
+              player.setRenderer(settings.renderer)
+              player.setRenderMethod(settings.renderMethod)
+              player.setShowTrail(settings.showTrail)
+              player.setHitsoundEnabled(settings.hitsoundEnabled)
+              player.setUseWorker(settings.useWorker)
+              player.setUseInstancing(settings.useInstancing)
+              player.setLockCamera(settings.lockCamera)
+              player.setTargetFramerate(settings.targetFramerate)
+              player.setStatsPanel(settings.showStats)
+              
+              // Synthesize hitsounds
+              await player.preSynthesizeHitsoundsWithProgress()
+              
+              // Only set stats callback if not using stats.js
+              if (!settings.showStats) {
+                player.setStatsCallback((stats) => {
+                  if (fpsCounterRef.current) {
+                    fpsCounterRef.current.textContent = `FPS  ${stats.fps.toFixed(2)}`
+                  }
+                  if (infoRef.current) {
+                    const bpm = loadedLevel.settings?.bpm || 0
+                    infoRef.current.innerHTML = `
+                      <div class="space-y-1">
+                        <div>Time: ${(stats.time / 1000).toFixed(2)}s</div>
+                        <div>Tile: ${stats.tileIndex} / ${loadedLevel.tiles?.length || 0}</div>
+                        <div>BPM: ${bpm}</div>
+                      </div>
+                    `
+                  }
+                })
+              }
+              
+              previewerRef.current = player
+            }
+            window.showNotification?.("success", t("editor.notifications.loadSuccess"))
+          } catch (error) {
+            console.error('[Example] Player init error:', error)
+            window.showNotification?.("error", `${t("editor.notifications.loadError")}: ${error}`)
           }
-          window.showNotification?.("success", t("editor.notifications.loadSuccess"))
         })
 
         await level.load()

@@ -298,9 +298,6 @@ export class Player implements IPlayer {
     // Build CustomBG Timeline
     this.buildCustomBGTimeline();
 
-    // Build CustomBG Timeline
-    this.buildCustomBGTimeline();
-
     // Initialize Decoration Manager
     this.decorationManager = new DecorationManager(
       this.scene,
