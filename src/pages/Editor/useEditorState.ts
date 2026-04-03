@@ -66,10 +66,10 @@ export function useEditorState() {
   const navigate = useNavigate()
   const { theme, resolvedTheme } = useTheme()
   const { t, mounted: i18nMounted } = useI18n()
-  const { settings, updateSettings } = useAppSettings()
+  const { settings } = useAppSettings()
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Fullscreen API with Safari compatibility
+  // Fullscreen API with Safari compatibility (independent of settings to avoid re-rendering player)
   const toggleFullscreen = useCallback(async (): Promise<void> => {
     try {
       const elem = document.documentElement as any
@@ -79,7 +79,6 @@ export function useEditorState() {
         } else if (elem.webkitRequestFullscreen) {
           await elem.webkitRequestFullscreen()
         }
-        updateSettings({ fullscreen: true })
         setIsFullscreen(true)
       } else {
         if (document.exitFullscreen) {
@@ -87,20 +86,18 @@ export function useEditorState() {
         } else if ((document as any).webkitExitFullscreen) {
           await (document as any).webkitExitFullscreen()
         }
-        updateSettings({ fullscreen: false })
         setIsFullscreen(false)
       }
     } catch (e) {
       console.warn('[Fullscreen] Failed to toggle fullscreen:', e)
     }
-  }, [updateSettings])
+  }, [])
 
   // Listen for fullscreen changes (e.g. user presses Esc)
   useEffect(() => {
     const handleFullscreenChange = (): void => {
       const isFull = !!(document.fullscreenElement || (document as any).webkitFullscreenElement)
       setIsFullscreen(isFull)
-      updateSettings({ fullscreen: isFull })
     }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
@@ -108,19 +105,7 @@ export function useEditorState() {
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
     }
-  }, [updateSettings])
-
-  // Auto-enter fullscreen on mount if setting is enabled
-  useEffect(() => {
-    if (mounted && settings.fullscreen && !isFullscreen) {
-      const elem = document.documentElement as any
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(() => {})
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen()
-      }
-    }
-  }, [mounted, settings.fullscreen]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Initialize player with level data
   const initializePlayer = useCallback((loadedLevel: any): void => {

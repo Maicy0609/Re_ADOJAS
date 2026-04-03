@@ -102,12 +102,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           description: t("settings.lockCamera.description"),
           type: "lockCamera",
         },
-        {
-          id: "fullscreen",
-          title: t("settings.fullscreen.title"),
-          description: t("settings.fullscreen.description"),
-          type: "fullscreen",
-        },
       ],
     },
   ]
@@ -403,26 +397,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </button>
                       <span className="text-sm text-slate-600 dark:text-slate-400">
                         {settings.lockCamera ? t("settings.lockCamera.enabled") : t("settings.lockCamera.disabled")}
-                      </span>
-                    </div>
-                  )}
-
-                  {setting.type === "fullscreen" && (
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => updateSettings({ fullscreen: !settings.fullscreen })}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.fullscreen ? "bg-purple-500" : "bg-slate-300 dark:bg-slate-600"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            settings.fullscreen ? "translate-x-6" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
-                        {settings.fullscreen ? t("settings.fullscreen.enabled") : t("settings.fullscreen.disabled")}
                       </span>
                     </div>
                   )}
