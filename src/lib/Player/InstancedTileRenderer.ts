@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 const MAX_INSTANCES = 8000;
+const MAX_DECO_INSTANCES = 4000;
 
 interface PoolEntry {
     mesh: THREE.InstancedMesh;
@@ -19,6 +20,22 @@ export interface TileInstanceData {
     bgColor: string;
 }
 
+export interface DecoInstanceData {
+    x: number;
+    y: number;
+    z: number;
+    rotation: number; // radians
+    scale: number;
+}
+
+type DecoType = 'twirl' | 'speedUp' | 'speedDown';
+
+const DECO_COLORS: Record<DecoType, number> = {
+    twirl: 0x800080,    // purple
+    speedUp: 0xff0000,  // red
+    speedDown: 0x0000ff, // blue
+};
+
 /**
  * GPU Instanced Tile Renderer
  * 
@@ -28,10 +45,17 @@ export interface TileInstanceData {
  * Uses only custom InstancedBufferAttributes for per-instance data
  * (no reliance on Three.js internal instanceColor injection) for
  * maximum mobile/desktop browser compatibility.
+ * 
+ * Also supports instanced decoration icons (twirl, speed up/down)
+ * using separate InstancedMesh pools with simple MeshBasicMaterial.
  */
 export class InstancedTileRenderer {
     private pool = new Map<string, PoolEntry>();
     private scene: THREE.Scene;
+
+    // Decoration icon pools — 3 InstancedMesh for twirl/speedUp/speedDown
+    private decoMeshes: Map<DecoType, THREE.InstancedMesh> = new Map();
+    private decoGeometry: THREE.CircleGeometry | null = null;
 
     // Reusable temp objects to avoid GC pressure
     private _matrix = new THREE.Matrix4();
@@ -183,12 +207,78 @@ export class InstancedTileRenderer {
     }
 
     /**
+     * Update decoration icons (twirl, speed up/down).
+     * Each deco type gets its own InstancedMesh for efficient single-draw-call rendering.
+     */
+    updateDecorations(
+        twirls: DecoInstanceData[],
+        speedUps: DecoInstanceData[],
+        speedDowns: DecoInstanceData[]
+    ): void {
+        this.updateDecoPool('twirl', twirls);
+        this.updateDecoPool('speedUp', speedUps);
+        this.updateDecoPool('speedDown', speedDowns);
+    }
+
+    /**
+     * Update a single decoration type pool.
+     */
+    private updateDecoPool(type: DecoType, data: DecoInstanceData[]): void {
+        const mesh = this.getOrCreateDecoMesh(type);
+        const count = Math.min(data.length, MAX_DECO_INSTANCES);
+
+        for (let i = 0; i < count; i++) {
+            const d = data[i];
+            this._position.set(d.x, d.y, d.z);
+            this._euler.set(0, 0, d.rotation);
+            this._quaternion.setFromEuler(this._euler);
+            this._scale.set(d.scale, d.scale, d.scale);
+            this._matrix.compose(this._position, this._quaternion, this._scale);
+            mesh.setMatrixAt(i, this._matrix);
+        }
+
+        mesh.count = count;
+        mesh.instanceMatrix.needsUpdate = true;
+    }
+
+    /**
+     * Get or create an InstancedMesh for a decoration type.
+     */
+    private getOrCreateDecoMesh(type: DecoType): THREE.InstancedMesh {
+        let mesh = this.decoMeshes.get(type);
+        if (mesh) return mesh;
+
+        // Create shared circle geometry if not yet created
+        if (!this.decoGeometry) {
+            const decoSize = 0.275 * 0.8;
+            this.decoGeometry = new THREE.CircleGeometry(decoSize / 2, 16);
+        }
+
+        const material = new THREE.MeshBasicMaterial({
+            color: DECO_COLORS[type],
+            side: THREE.DoubleSide,
+            depthTest: true,
+        });
+
+        mesh = new THREE.InstancedMesh(this.decoGeometry, material, MAX_DECO_INSTANCES);
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+
+        this.scene.add(mesh);
+        this.decoMeshes.set(type, mesh);
+        return mesh;
+    }
+
+    /**
      * Get the number of active draw calls (non-hidden instanced meshes)
      */
     getDrawCallCount(): number {
         let count = 0;
         for (const [, entry] of this.pool) {
             if (entry.mesh.count > 0) count++;
+        }
+        for (const [, mesh] of this.decoMeshes) {
+            if (mesh.count > 0) count++;
         }
         return count;
     }
@@ -200,6 +290,10 @@ export class InstancedTileRenderer {
     clearScene(): void {
         for (const [, entry] of this.pool) {
             entry.mesh.visible = false;
+        }
+        for (const [, mesh] of this.decoMeshes) {
+            mesh.count = 0;
+            mesh.instanceMatrix.needsUpdate = true;
         }
     }
 
@@ -219,5 +313,19 @@ export class InstancedTileRenderer {
         }
         this.pool.clear();
         this._lastUsedKeys.clear();
+
+        // Dispose decoration meshes
+        for (const [, mesh] of this.decoMeshes) {
+            this.scene.remove(mesh);
+            if (!Array.isArray(mesh.material)) {
+                mesh.material.dispose();
+            }
+            mesh.dispose();
+        }
+        if (this.decoGeometry) {
+            this.decoGeometry.dispose();
+            this.decoGeometry = null;
+        }
+        this.decoMeshes.clear();
     }
 }

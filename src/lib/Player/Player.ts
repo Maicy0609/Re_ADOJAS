@@ -14,7 +14,7 @@ import { CameraController, CameraTimelineEntry } from './CameraController';
 import { DecorationManager } from './DecorationManager';
 import { MoveTrackManager } from './MoveTrackManager';
 import { PositionTrackManager } from './PositionTrackManager';
-import { InstancedTileRenderer, TileInstanceData } from './InstancedTileRenderer';
+import { InstancedTileRenderer, TileInstanceData, DecoInstanceData } from './InstancedTileRenderer';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 
 function logMem(tag: string) {
@@ -2271,12 +2271,19 @@ export class Player implements IPlayer {
 
   /**
    * GPU instanced tile update — replaces individual mesh creation/destruction
+   * Also collects decoration icon data (twirl, speed up/down) for instanced rendering.
    */
   private updateInstancedTiles(visibleIndices: number[]): void {
     if (!this.instancedRenderer) return;
 
     const tiles = this.levelData.tiles;
     const tileData: TileInstanceData[] = new Array(visibleIndices.length);
+    // Pre-allocate decoration arrays (typically very few compared to tiles)
+    const twirls: DecoInstanceData[] = [];
+    const speedUps: DecoInstanceData[] = [];
+    const speedDowns: DecoInstanceData[] = [];
+    const baseBPM = this.levelData.settings.bpm || 100;
+
     let writeIdx = 0;
 
     for (let v = 0; v < visibleIndices.length; v++) {
@@ -2311,6 +2318,44 @@ export class Player implements IPlayer {
       const bgColor = colors?.secondaryColor || color;
 
       tileData[writeIdx++] = { shapeKey, x, y, z, rotation, scale, color, bgColor };
+
+      // Check for decoration icons (same logic as legacy path)
+      let hasTwirl = false;
+      let hasSetSpeed = false;
+
+      if (this.tileEvents.size > 0 && this.tileEvents.has(idx)) {
+        const events = this.tileEvents.get(idx)!;
+        for (let e = 0; e < events.length; e++) {
+          if (events[e].eventType === 'Twirl') hasTwirl = true;
+          if (events[e].eventType === 'SetSpeed') hasSetSpeed = true;
+        }
+      } else {
+        // Large file fallback: check tiles[i].actions
+        if (tile?.actions) {
+          for (let e = 0; e < tile.actions.length; e++) {
+            if (tile.actions[e].eventType === 'Twirl') hasTwirl = true;
+            if (tile.actions[e].eventType === 'SetSpeed') hasSetSpeed = true;
+          }
+        }
+      }
+
+      // Decoration z-offsets: base 0.002, +0.001 if twirl also present
+      if (hasTwirl) {
+        twirls.push({ x, y, z: z + 0.002, rotation, scale });
+      }
+
+      if (hasSetSpeed) {
+        const currentBPM = this.tileBPM[idx];
+        const prevBPM = idx > 0 ? this.tileBPM[idx - 1] : baseBPM;
+        const ratio = currentBPM / prevBPM;
+        const extraZ = hasTwirl ? 0.001 : 0;
+
+        if (ratio > 1.05) {
+          speedUps.push({ x, y, z: z + 0.002 + extraZ, rotation, scale });
+        } else if (ratio < 0.95) {
+          speedDowns.push({ x, y, z: z + 0.002 + extraZ, rotation, scale });
+        }
+      }
     }
 
     // Trim array if some tiles were skipped
@@ -2319,6 +2364,7 @@ export class Player implements IPlayer {
     }
 
     this.instancedRenderer.update(tileData, this.geometryCache);
+    this.instancedRenderer.updateDecorations(twirls, speedUps, speedDowns);
   }
 
   private getOrCreateTileMesh(index: number): THREE.Mesh | null {
