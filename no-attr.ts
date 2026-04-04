@@ -100,14 +100,7 @@ function processAttributes(
     }
   });
 
-  // 特殊处理：将 type="module" 的 script 转换为普通脚本
-  if (element.tagName === 'SCRIPT' && element.hasAttribute('type')) {
-    const typeValue = element.getAttribute('type');
-    if (typeValue === 'module') {
-      // 移除 type 属性，使其成为普通脚本
-      element.removeAttribute('type');
-    }
-  }
+  // 注意：不再移除 type="module"，ESM 模块需要此属性才能正常加载
 
   // 处理需要添加 base 路径的属性
   if (enableBasePath && base && base !== '/') {
@@ -162,13 +155,18 @@ function processHtml(html: string, options: HtmlPostBuildOptions): string {
     processAttributes(img, options);
   });
 
-  // 处理 meta 标签（某些 meta 标签可能需要 base 路径）
+  // 处理 meta 标签（仅处理 content 中包含 URL 的情况）
   const metas = root.querySelectorAll('meta');
   metas.forEach((meta: any) => {
-    // 只处理 content 属性中的 URL
     const property = meta.getAttribute('property');
     const name = meta.getAttribute('name');
-    if (property || name) {
+    const content = meta.getAttribute('content') || '';
+    // 跳过 viewport 等非 URL 类型的 meta 标签
+    if (name === 'viewport' || name === 'charset' || name === 'theme-color') return;
+    // 只对 content 看起来像 URL/路径的 meta 标签添加 base 路径
+    if ((property && (property.startsWith('og:') || property.startsWith('twitter:')) &&
+         (content.startsWith('/') || content.includes('.html') || content.includes('.png') || content.includes('.jpg'))) ||
+        (property === 'og:url')) {
       processAttributes(meta, options);
     }
   });
