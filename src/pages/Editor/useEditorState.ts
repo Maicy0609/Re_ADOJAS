@@ -225,10 +225,15 @@ export function useEditorState() {
   }, [])
 
   const handleConfirmExit = useCallback((): void => {
-    // 清理 Player 资源
-    if (previewerRef.current) {
-      previewerRef.current.destroyPlayer()
-      previewerRef.current = null
+    setShowExitDialog(false)
+    // 清理 Player 资源（加 try-catch 防止销毁异常阻断导航）
+    try {
+      if (previewerRef.current) {
+        previewerRef.current.destroyPlayer()
+        previewerRef.current = null
+      }
+    } catch (e) {
+      console.warn('[Editor] destroyPlayer error (non-critical):', e)
     }
     navigate("/")
   }, [navigate])
