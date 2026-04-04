@@ -1,7 +1,6 @@
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import path from "path"
-import legacy from '@vitejs/plugin-legacy'
 import htmlPostBuildPlugin from './no-attr'
 
 const base = './'
@@ -12,10 +11,6 @@ export default defineConfig(({ mode, command }) => {
   const plugins = [
     react(),
   ]
-  plugins.push(legacy({
-    targets: ['defaults', 'not IE 11'],
-    additionalLegacyPolyfills: ['regenerator-runtime/runtime']
-  }))
   plugins.push(htmlPostBuildPlugin({ base }) as any)
   return {
     plugins: plugins,
